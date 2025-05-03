@@ -1,0 +1,20 @@
+{
+  "extends": ["next/core-web-vitals", "eslint:recommended"],
+  "parserOptions": {
+    "ecmaVersion": "latest",
+    "sourceType": "module"
+  },
+  "env": {
+    "es6": true,
+    "browser": true,
+    "node": true
+  },
+  "rules": {
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+    "no-console": "warn", // Warn about console logs
+    "indent": ["warn", 2, { "SwitchCase": 1 }], // Enforce 2-space indentation
+    "linebreak-style": ["warn", "unix"], // Enforce Unix line endings
+    "quotes": ["warn", "single"], // Prefer single quotes
+    "semi": ["warn", "always"] // Require semicolons
+  }
+}
