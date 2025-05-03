@@ -5,13 +5,16 @@ import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Loader2, AlertTriangle, CircleDollarSign, PiggyBank, Clock, Users, ListChecks, TrendingUp, TrendingDown, Percent, CalendarCheck2 } from 'lucide-react'; // Added more icons
+import { Loader2, AlertTriangle, CircleDollarSign, PiggyBank, Clock, Users, ListChecks, TrendingUp, TrendingDown, Percent, CalendarCheck2, Info } from 'lucide-react'; // Added more icons
 import { getAuthHeaders } from '@/lib/auth';
+import { Separator } from '@/components/ui/separator'; // Added Separator
+import { cn } from '@/lib/utils';
+
 // Import chart components if/when needed
 // import { BarChart, LineChart ... } from '@/components/ui/charts'; // Assuming shadcn charts or similar
 
 // Use NEXT_PUBLIC_ prefix for client-side environment variables
-const API_URL = process.env.NEXT_PUBLIC_API_URL; // Corrected variable name
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 // Interface for the summary data expected from the API
 interface ShopkeeperSummary {
@@ -63,10 +66,10 @@ export default function SummaryPage() {
   }, [fetchSummary]); // fetchSummary is stable
 
   // Helper to format currency
-  const formatCurrency = (amount: number | null | undefined): string => {
-     if (amount === null || amount === undefined) return '₹--';
-     return `₹${Number(amount).toFixed(2)}`;
-  };
+   const formatCurrency = (amount: number | null | undefined): string => {
+     if (amount === null || amount === undefined) return '₹ --.--';
+     return `₹${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+   };
 
   // Calculate collection rate if possible
   const calculateCollectionRate = (): string => {
@@ -78,18 +81,18 @@ export default function SummaryPage() {
   };
 
   return (
-    <div className="container mx-auto py-6 px-4 md:px-6 space-y-6">
+    <div className="container mx-auto py-6 px-4 md:px-6 space-y-8">
       {/* Page Header */}
       <div className="mb-6 border-b pb-4">
-        <h1 className="text-2xl font-bold tracking-tight">Business Summary</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">Business Summary</h1>
         <p className="text-muted-foreground mt-1">A detailed overview of your loan activities and performance.</p>
       </div>
 
        {/* Loading State */}
        {loading && (
-           <div className="flex justify-center items-center py-20 text-muted-foreground">
-              <Loader2 className="mr-3 h-6 w-6 animate-spin text-primary" />
-              <span className="text-lg">Loading summary data...</span>
+           <div className="flex flex-col justify-center items-center py-20 text-muted-foreground bg-muted/30 rounded-lg border">
+              <Loader2 className="mr-3 h-8 w-8 animate-spin text-primary" />
+              <span className="text-lg mt-4">Loading summary data...</span>
           </div>
        )}
 
@@ -107,63 +110,52 @@ export default function SummaryPage() {
 
        {/* Main Summary Card Grid (only show if data is loaded and no error) */}
         {summary && !loading && !error && (
-          <>
+          <div className="space-y-8">
             <Card className="shadow-md rounded-lg border border-border">
               <CardHeader className="border-b">
-                <CardTitle className="text-lg font-semibold">Key Financial Metrics</CardTitle>
-                {/* <CardDescription>Overview of financial and customer data.</CardDescription> */}
+                <CardTitle className="text-xl font-semibold">Key Financial Metrics</CardTitle>
+                <CardDescription>Overview of your lending and collection.</CardDescription>
               </CardHeader>
               <CardContent className="pt-6">
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                       {/* Total Loaned */}
-                      <Card className="hover:shadow-lg transition-shadow border">
-                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                              <CardTitle className="text-sm font-medium">Total Loaned</CardTitle>
-                              <TrendingUp className="h-4 w-4 text-blue-500" />
-                          </CardHeader>
-                          <CardContent>
-                              <div className="text-2xl font-bold">{formatCurrency(summary.totalLoaned)}</div>
-                              <p className="text-xs text-muted-foreground">Total credit extended</p>
-                          </CardContent>
-                      </Card>
+                      <MetricCard
+                          title="Total Loaned"
+                          value={formatCurrency(summary.totalLoaned)}
+                          description="Total credit extended"
+                          icon={TrendingUp}
+                          iconColor="text-blue-500"
+                      />
 
                       {/* Total Collected */}
-                      <Card className="hover:shadow-lg transition-shadow border">
-                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                              <CardTitle className="text-sm font-medium">Total Collected</CardTitle>
-                              <PiggyBank className="h-4 w-4 text-green-600" />
-                          </CardHeader>
-                          <CardContent>
-                              <div className="text-2xl font-bold text-green-600">{formatCurrency(summary.totalCollected)}</div>
-                              <p className="text-xs text-muted-foreground">Total repayments received</p>
-                          </CardContent>
-                      </Card>
+                       <MetricCard
+                           title="Total Collected"
+                           value={formatCurrency(summary.totalCollected)}
+                           description="Total repayments received"
+                           icon={PiggyBank}
+                           iconColor="text-green-600"
+                           valueColor="text-green-600"
+                       />
 
                       {/* Total Outstanding */}
-                      <Card className="hover:shadow-lg transition-shadow border">
-                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                              <CardTitle className="text-sm font-medium">Outstanding Balance</CardTitle>
-                              <ListChecks className="h-4 w-4 text-orange-500" />
-                          </CardHeader>
-                          <CardContent>
-                              <div className="text-2xl font-bold text-orange-600">{formatCurrency(summary.totalOutstanding)}</div>
-                              <p className="text-xs text-muted-foreground">Amount yet to be collected</p>
-                          </CardContent>
-                      </Card>
+                       <MetricCard
+                           title="Outstanding Balance"
+                           value={formatCurrency(summary.totalOutstanding)}
+                           description="Amount yet to be collected"
+                           icon={ListChecks}
+                           iconColor="text-orange-500"
+                           valueColor="text-orange-600"
+                       />
 
                       {/* Collection Rate */}
-                      <Card className="hover:shadow-lg transition-shadow border">
-                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                              <CardTitle className="text-sm font-medium">Collection Rate</CardTitle>
-                              <Percent className="h-4 w-4 text-indigo-500" />
-                          </CardHeader>
-                          <CardContent>
-                              <div className="text-2xl font-bold text-indigo-600">
-                                  {calculateCollectionRate()}
-                              </div>
-                              <p className="text-xs text-muted-foreground">Collected / Loaned</p>
-                          </CardContent>
-                      </Card>
+                       <MetricCard
+                           title="Collection Rate"
+                           value={calculateCollectionRate()}
+                           description="Collected / Loaned"
+                           icon={Percent}
+                           iconColor="text-indigo-500"
+                           valueColor="text-indigo-600"
+                       />
 
                   </div>
               </CardContent>
@@ -171,62 +163,49 @@ export default function SummaryPage() {
 
             <Card className="shadow-md rounded-lg border border-border">
                <CardHeader className="border-b">
-                  <CardTitle className="text-lg font-semibold">Loan & Customer Status</CardTitle>
+                  <CardTitle className="text-xl font-semibold">Loan & Customer Status</CardTitle>
+                  <CardDescription>Current state of your loans and customers.</CardDescription>
                </CardHeader>
                <CardContent className="pt-6">
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                        {/* Total Overdue Amount */}
-                       <Card className="hover:shadow-lg transition-shadow border-l-4 border-destructive">
-                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                              <CardTitle className="text-sm font-medium">Overdue Amount</CardTitle>
-                              <AlertTriangle className="h-4 w-4 text-destructive" />
-                          </CardHeader>
-                          <CardContent>
-                              <div className="text-2xl font-bold text-destructive">{formatCurrency(summary.totalOverdueAmount)}</div>
-                              <p className="text-xs text-muted-foreground">{summary.overdueLoanCount ?? '--'} overdue loan(s)</p>
-                          </CardContent>
-                      </Card>
+                       <MetricCard
+                           title="Overdue Amount"
+                           value={formatCurrency(summary.totalOverdueAmount)}
+                           description={`${summary.overdueLoanCount ?? '--'} overdue loan(s)`}
+                           icon={AlertTriangle}
+                           iconColor="text-destructive"
+                           valueColor="text-destructive"
+                           borderClass="border-l-4 border-destructive"
+                       />
 
                        {/* Active Loans */}
-                       <Card className="hover:shadow-lg transition-shadow border">
-                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                              <CardTitle className="text-sm font-medium">Active Loans</CardTitle>
-                              <ListChecks className="h-4 w-4 text-primary" />
-                          </CardHeader>
-                          <CardContent>
-                              <div className="text-2xl font-bold">{summary.activeLoanCount ?? '--'}</div>
-                              <p className="text-xs text-muted-foreground">Pending or overdue loans</p>
-                          </CardContent>
-                       </Card>
+                       <MetricCard
+                           title="Active Loans"
+                           value={String(summary.activeLoanCount ?? '--')}
+                           description="Pending or overdue loans"
+                           icon={ListChecks}
+                           iconColor="text-primary"
+                       />
 
                         {/* Average Repayment Time */}
-                       <Card className="hover:shadow-lg transition-shadow border">
-                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                              <CardTitle className="text-sm font-medium">Avg. Repayment Time</CardTitle>
-                              <CalendarCheck2 className="h-4 w-4 text-teal-600" />
-                          </CardHeader>
-                          <CardContent>
-                              <div className="text-2xl font-bold text-teal-700">
-                                  {summary.averageRepaymentTimeDays !== null
-                                      ? `${summary.averageRepaymentTimeDays} days`
-                                      : <span className="text-muted-foreground">N/A</span>
-                                  }
-                              </div>
-                              <p className="text-xs text-muted-foreground">For fully paid loans</p>
-                          </CardContent>
-                      </Card>
+                        <MetricCard
+                            title="Avg. Repayment Time"
+                            value={summary.averageRepaymentTimeDays !== null ? `${summary.averageRepaymentTimeDays} days` : 'N/A'}
+                            description="For fully paid loans"
+                            icon={CalendarCheck2}
+                            iconColor="text-teal-600"
+                            valueColor="text-teal-700"
+                        />
 
                        {/* Total Customers */}
-                       <Card className="hover:shadow-lg transition-shadow border">
-                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                              <CardTitle className="text-sm font-medium">Total Customers</CardTitle>
-                              <Users className="h-4 w-4 text-muted-foreground" />
-                          </CardHeader>
-                          <CardContent>
-                              <div className="text-2xl font-bold">{summary.totalCustomers ?? '--'}</div>
-                              <p className="text-xs text-muted-foreground">Registered customers</p>
-                          </CardContent>
-                       </Card>
+                       <MetricCard
+                           title="Total Customers"
+                           value={String(summary.totalCustomers ?? '--')}
+                           description="Registered customers"
+                           icon={Users}
+                           iconColor="text-muted-foreground"
+                       />
                    </div>
                </CardContent>
             </Card>
@@ -234,30 +213,74 @@ export default function SummaryPage() {
              {/* Placeholder for Charts */}
               <Card className="shadow-md rounded-lg border border-border">
                <CardHeader>
-                   <CardTitle className="text-lg font-semibold">Visualizations</CardTitle>
+                   <CardTitle className="text-xl font-semibold">Visualizations</CardTitle>
                    <CardDescription>Charts showing trends over time (coming soon).</CardDescription>
                </CardHeader>
-               <CardContent className="flex items-center justify-center min-h-[200px] text-muted-foreground bg-muted/20 rounded-b-lg">
-                   {/* Chart components would go here */}
-                   <p>
-                     <p>
-                      Bar chart will be here.
-                    </p>
-                   </p>
+               <CardContent className="flex flex-col items-center justify-center min-h-[250px] text-muted-foreground bg-muted/20 rounded-b-lg border-t">
+                   <BarChartIcon className="h-16 w-16 text-muted-foreground/40 mb-4"/>
+                   <p className="text-lg font-medium">Charts Coming Soon</p>
+                   <p className="text-sm mt-1">Visual trends of loans and collections will appear here.</p>
                    {/* Example: <BarChart data={chartData} ... /> */}
                </CardContent>
              </Card>
-          </>
+          </div>
         )}
 
          {/* Message if no summary data and not loading */}
          {!summary && !loading && !error && (
             <Card className="shadow-md rounded-lg border border-border p-10 text-center">
-                 <Info className="mx-auto h-10 w-10 text-muted-foreground mb-4" />
-                 <p className="text-muted-foreground">No summary data available yet.</p>
-                 <p className="text-sm text-muted-foreground mt-2">Start by adding customers and recording loans to see your business summary.</p>
+                 <Info className="mx-auto h-12 w-12 text-muted-foreground/50 mb-4" />
+                 <p className="text-xl font-semibold text-foreground">No Summary Data Available</p>
+                 <p className="text-muted-foreground mt-2">Start by adding customers and recording loans to see your business summary.</p>
             </Card>
          )}
     </div>
   );
 }
+
+
+// Helper Component for Metric Cards (improves structure)
+interface MetricCardProps {
+    title: string;
+    value: string;
+    description: string;
+    icon: React.ElementType;
+    iconColor?: string;
+    valueColor?: string;
+    borderClass?: string;
+}
+
+function MetricCard({ title, value, description, icon: Icon, iconColor = "text-primary", valueColor = "text-foreground", borderClass }: MetricCardProps) {
+    return (
+         <Card className={cn("hover:shadow-lg transition-shadow border rounded-lg overflow-hidden", borderClass)}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-muted/30">
+                <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+                <Icon className={cn("h-5 w-5", iconColor)} />
+            </CardHeader>
+            <CardContent className="pt-4">
+                <div className={cn("text-3xl font-bold", valueColor)}>{value}</div>
+                <p className="text-xs text-muted-foreground mt-1">{description}</p>
+            </CardContent>
+        </Card>
+    );
+}
+
+// Placeholder Icon (Replace with actual chart icon if available)
+const BarChartIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <line x1="12" y1="20" x2="12" y2="10" />
+    <line x1="18" y1="20" x2="18" y2="4" />
+    <line x1="6" y1="20" x2="6" y2="16" />
+  </svg>
+);
+
+    

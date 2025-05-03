@@ -186,6 +186,7 @@ export async function POST(req: NextRequest) {
         customer: new mongoose.Types.ObjectId(customerId),
         description: description.trim(),
         amount: numAmount,
+        balance: numAmount, // Set the initial balance to the loan amount
         // balance and status are set by pre-save middleware
         issueDate: parsedIssueDate,
         dueDate: parsedDueDate!, // We've validated it's not null above

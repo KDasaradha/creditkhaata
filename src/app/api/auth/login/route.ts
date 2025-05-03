@@ -1,3 +1,4 @@
+
 // src/app/api/auth/login/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
@@ -7,60 +8,111 @@ import User from '@/models/User';
 import mongoose from 'mongoose'; // Import mongoose
 
 const JWT_SECRET = process.env.JWT_SECRET;
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1d';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1d'; // Default to 1 day
 
 if (!JWT_SECRET) {
-    console.error('FATAL ERROR: JWT_SECRET environment variable is not defined.');
-    // Potentially throw an error or handle appropriately, but the server shouldn't really run without it.
-    // For now, log and proceed, but login will fail if JWT_SECRET is missing.
+  console.error('FATAL ERROR: JWT_SECRET environment variable is not defined.');
+  // Stop server start or handle appropriately in a real scenario
+  // Consider throwing an error during build or startup
 }
 
 // Generate JWT
 const generateToken = (id: string, email: string): string => {
-    if (!JWT_SECRET) {
-        console.error('JWT Secret is not configured. Cannot generate token.');
-        throw new Error('JWT Secret is not configured.');
-    }
-  return jwt.sign({ id, email }, JWT_SECRET, { // Include email in payload if needed client-side
+  if (!JWT_SECRET) {
+    console.error('JWT Secret is not configured. Cannot generate token.');
+    throw new Error('JWT Secret is not configured.');
+  }
+  return jwt.sign({ id, email }, JWT_SECRET, {
     expiresIn: JWT_EXPIRES_IN,
   });
 };
 
-export async function POST(req: NextRequest) {
+// Function to calculate cookie expiry in seconds
+const getCookieMaxAge = (expiresIn: string): number => {
   try {
-    await connectDB(); // Ensure database is connected
+    const matchDays = expiresIn.match(/^(\d+)d$/);
+    const matchHours = expiresIn.match(/^(\d+)h$/);
+    const matchMinutes = expiresIn.match(/^(\d+)m$/);
+
+    if (matchDays) {
+      return parseInt(matchDays[1]) * 24 * 60 * 60; // Days to seconds
+    } else if (matchHours) {
+      return parseInt(matchHours[1]) * 60 * 60; // Hours to seconds
+    } else if (matchMinutes) {
+      return parseInt(matchMinutes[1]) * 60; // Minutes to seconds
+    }
+    // Default: Attempt to parse as seconds or default to 1 day
+    const seconds = parseInt(expiresIn);
+    if (!isNaN(seconds)) return seconds;
+
+  } catch (e) {
+    console.warn("Could not parse JWT_EXPIRES_IN for cookie maxAge. Defaulting.");
+  }
+  return 24 * 60 * 60; // Default to 1 day in seconds
+};
+
+// Helper to add CORS headers
+function addCorsHeaders(response: NextResponse): NextResponse {
+  response.headers.set('Access-Control-Allow-Origin', '*'); // Adjust for production
+  response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  response.headers.set('Access-Control-Allow-Credentials', 'true');
+  return response;
+}
+
+export async function OPTIONS(req: NextRequest) {
+  const response = new NextResponse(null, { status: 204 });
+  return addCorsHeaders(response);
+}
+
+
+export async function POST(req: NextRequest) {
+  console.log('Login API endpoint hit');
+  try {
+    await connectDB();
+    console.log('Database connected successfully');
   } catch (dbError: any) {
-      console.error('Database connection failed in /api/auth/login:', dbError);
-      return NextResponse.json({ message: 'Server error: Could not connect to database.' }, { status: 500 });
+    console.error('Database connection failed in /api/auth/login:', dbError);
+    let response = NextResponse.json({ message: 'Server error: Could not connect to database.' }, { status: 503 });
+    return addCorsHeaders(response);
   }
 
   try {
     const { email, password } = await req.json();
+    console.log(`Received login attempt for email: ${email}`);
 
     // Basic validation
     if (!email || !password) {
-      return NextResponse.json({ message: 'Please provide email and password' }, { status: 400 });
+      console.log('Validation failed: Missing email or password');
+      let response = NextResponse.json({ message: 'Please provide email and password' }, { status: 400 });
+      return addCorsHeaders(response);
     }
     if (!validator.isEmail(email)) {
-       return NextResponse.json({ message: 'Please provide a valid email address' }, { status: 400 });
+      console.log('Validation failed: Invalid email format');
+      let response = NextResponse.json({ message: 'Please provide a valid email address' }, { status: 400 });
+      return addCorsHeaders(response);
     }
 
-    // Check for user by email, explicitly selecting password
-    // Note: User model should have `select: false` on password field
+    // Fetch user, explicitly selecting the password field which is usually excluded
+    console.log('Fetching user from database...');
     const user = await User.findOne({ email }).select('+password');
 
-    // Check if user exists AND password field was successfully retrieved
     if (!user || !user.password) {
-        console.log(`Login attempt failed for email: ${email}. User not found or password field missing.`);
-        return NextResponse.json({ message: 'Invalid email or password' }, { status: 401 }); // User not found or query issue
+      console.log(`Login attempt failed for email: ${email}. User not found or password missing.`);
+      let response = NextResponse.json({ message: 'Invalid email or password' }, { status: 401 });
+      return addCorsHeaders(response);
     }
+    console.log(`User found: ${user.email}`);
 
-    // Check password by passing both the candidate password and the retrieved hash
+    // Verify password using the instance method from the User model
+    console.log('Verifying password...');
     const isMatch = await user.correctPassword(password, user.password);
+    console.log(`Password verification result: ${isMatch}`);
 
     if (!isMatch) {
-        console.log(`Login attempt failed for email: ${email}. Password mismatch.`);
-        return NextResponse.json({ message: 'Invalid email or password' }, { status: 401 }); // Password incorrect
+      console.log(`Login attempt failed for email: ${email}. Password mismatch.`);
+      let response = NextResponse.json({ message: 'Invalid email or password' }, { status: 401 });
+      return addCorsHeaders(response);
     }
 
     console.log(`Login successful for email: ${email}.`);
@@ -68,74 +120,79 @@ export async function POST(req: NextRequest) {
     // Generate token
     let token: string;
     try {
-         token = generateToken(user._id.toString(), user.email);
+      token = generateToken(user._id.toString(), user.email);
+      console.log('JWT token generated successfully.');
     } catch (tokenError: any) {
-        console.error('Error generating JWT token:', tokenError);
-        return NextResponse.json({ message: 'Server error during authentication.' }, { status: 500 });
+      console.error('Error generating JWT token:', tokenError);
+      let response = NextResponse.json({ message: 'Server error during authentication.' }, { status: 500 });
+      return addCorsHeaders(response);
     }
 
 
-    // Return user info (excluding password) and token
-    const response = NextResponse.json({
+    // Prepare response body - INCLUDE THE TOKEN HERE for client-side storage
+    const responseBody = {
       _id: user._id,
       email: user.email,
-      token: token,
-    });
+      token: token, // Include the token in the response body
+    };
+
+    console.log('Preparing successful response...');
+    let response = NextResponse.json(responseBody);
 
     // --- Set HttpOnly Cookie ---
-    // Calculate expiry date for the cookie based on JWT_EXPIRES_IN
-    let cookieExpires: Date | undefined;
-    try {
-        if (JWT_EXPIRES_IN) {
-            const matchDays = JWT_EXPIRES_IN.match(/^(\d+)d$/);
-            const matchHours = JWT_EXPIRES_IN.match(/^(\d+)h$/);
-            const matchMinutes = JWT_EXPIRES_IN.match(/^(\d+)m$/);
+    const cookieMaxAgeSeconds = getCookieMaxAge(JWT_EXPIRES_IN);
 
-            const now = Date.now();
-            if (matchDays) {
-                cookieExpires = new Date(now + parseInt(matchDays[1]) * 24 * 60 * 60 * 1000);
-            } else if (matchHours) {
-                cookieExpires = new Date(now + parseInt(matchHours[1]) * 60 * 60 * 1000);
-            } else if (matchMinutes) {
-                 cookieExpires = new Date(now + parseInt(matchMinutes[1]) * 60 * 1000);
-            } else {
-                // Default or fallback if format is unexpected (e.g., 1d)
-                cookieExpires = new Date(now + 24 * 60 * 60 * 1000); // Default to 1 day
-            }
-        }
-    } catch (e) {
-        console.warn("Could not parse JWT_EXPIRES_IN for cookie expiry. Defaulting.");
-        cookieExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // Default to 1 day
-    }
+    // Set token in HTTPOnly cookie for security (middleware relies on this)
+    response.cookies.set(process.env.TOKEN_COOKIE_NAME || 'credikhaata_token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+      maxAge: cookieMaxAgeSeconds,
+    });
+    console.log(`Set HttpOnly cookie with maxAge: ${cookieMaxAgeSeconds} seconds.`);
 
-
-    // Set token in HTTPOnly cookie for security (recommended)
-     // The client-side code will primarily use localStorage/sessionStorage for convenience,
-     // but the cookie is essential for the middleware to work reliably.
-     response.cookies.set('credikhaata_token', token, {
-        httpOnly: true, // Prevents client-side JavaScript access
-        secure: process.env.NODE_ENV === 'production', // Only send over HTTPS in production
-        sameSite: 'strict', // Mitigates CSRF attacks
-        path: '/',
-        expires: cookieExpires, // Set expiry based on JWT_EXPIRES_IN
-     });
-
+    // Add CORS headers to the final response
+    response = addCorsHeaders(response);
+    console.log('Login successful response sent.');
     return response;
 
   } catch (error: any) {
     console.error('Login API error:', error);
+    let response: NextResponse;
     if (error instanceof SyntaxError) {
-        // Handle JSON parsing errors specifically
-        return NextResponse.json({ message: 'Invalid request format. Please provide valid JSON.' }, { status: 400 });
+      response = NextResponse.json({ message: 'Invalid request format. Please provide valid JSON.' }, { status: 400 });
+    } else if (error instanceof mongoose.Error) {
+      console.error('Mongoose error during login:', error);
+      response = NextResponse.json({ message: 'Server error: Could not retrieve user data.' }, { status: 500 });
+    } else {
+      response = NextResponse.json({ message: 'Server error during login', error: error.message || 'Unknown error' }, { status: 500 });
     }
-     if (error instanceof mongoose.Error) {
-        // Handle potential Mongoose/database query errors during findOne
-        console.error('Mongoose error during login:', error);
-        return NextResponse.json({ message: 'Server error: Could not retrieve user data.' }, { status: 500 });
-    }
-    // Generic server error
-    return NextResponse.json({ message: 'Server error during login', error: error.message || 'Unknown error' }, { status: 500 });
+    return addCorsHeaders(response);
   }
 }
 
-    
+// Add a simple logout route to clear the cookie server-side
+export async function POST_LOGOUT(req: NextRequest) { // Changed name to avoid conflict, use separate endpoint or method
+  console.log('Logout API endpoint hit');
+  // Create a response to clear the cookie
+  const response = NextResponse.json({ message: 'Logged out successfully' });
+
+  // Set the cookie with maxAge=0 or an expiry date in the past
+  response.cookies.set(process.env.TOKEN_COOKIE_NAME || 'credikhaata_token', '', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/',
+    maxAge: 0, // Expire the cookie immediately
+  });
+
+  console.log('Logout cookie cleared.');
+  return addCorsHeaders(response);
+}
+
+// Note: To use the POST_LOGOUT, you'd need to rename the file or handle routing differently.
+// A common pattern is to have a dedicated `/api/auth/logout` route.
+// For now, the clearing logic is added here for reference. The client `logout` function
+// already tries to call `/api/auth/logout`. We need that route file.
+

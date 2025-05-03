@@ -1,132 +1,144 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 0 0% 98%; /* Light Grey */
-    --foreground: 222.2 47.4% 11.2%; /* Dark Blueish */
+    --background: 0 0% 98%; /* Light Grey - Slightly off-white */
+    --foreground: 224 71% 4%; /* Very Dark Blue */
 
     --card: 0 0% 100%; /* White */
-    --card-foreground: 222.2 47.4% 11.2%;
+    --card-foreground: 224 71% 4%; /* Dark Blue on White Cards */
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 47.4% 11.2%;
+    --popover-foreground: 224 71% 4%;
 
-    --primary: 210 40% 20%; /* Dark Blue/Greenish - Adjusted for better contrast/appeal */
-    --primary-foreground: 0 0% 98%; /* Light Grey for text on primary */
+    /* Primary: A muted, professional blue */
+    --primary: 217 91% 60%; /* Adjusted Blue */
+    /* --primary: 210 40% 25%; /* Original Dark Blue/Greenish */
+    --primary-foreground: 0 0% 100%; /* White text on primary */
 
-    --secondary: 215 30% 35%; /* Slightly lighter blue/grey for secondary elements */
-    --secondary-foreground: 0 0% 98%;
+    /* Secondary: A slightly lighter, neutral blue/grey */
+    --secondary: 215 28% 47%;
+    /* --secondary: 215 30% 35%; /* Original */
+    --secondary-foreground: 0 0% 100%; /* White text on secondary */
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 210 40% 96.1%; /* Light grey for muted backgrounds */
+    --muted-foreground: 215 16% 47%; /* Grey text for muted content */
 
-    --accent: 43 74% 49%; /* Gold - #FFD700 equivalent HSL */
-    --accent-foreground: 222.2 47.4% 11.2%; /* Dark text on gold */
+    /* Accent: Gold - kept vibrant */
+    --accent: 45 93% 47%; /* #FFD700 -> #eeb60a (slightly adjusted HSL) */
+    /* --accent: 43 74% 49%; /* Original Gold */
+    --accent-foreground: 224 71% 4%; /* Dark text on gold */
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive: 0 84% 60%; /* Standard destructive red */
+    --destructive-foreground: 0 0% 98%; /* Light text on destructive */
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 215 30% 35%; /* Ring color matching secondary */
+    --border: 214 32% 91%; /* Light grey border */
+    --input: 214 32% 91%; /* Input border matches general border */
+    --ring: 217 91% 60%; /* Ring color matches primary for focus */
 
-    --radius: 0.5rem; /* Slightly more rounded corners */
+    --radius: 0.5rem; /* Consistent rounded corners */
   }
 
   .dark {
-    /* Define dark mode colors if needed later, matching the aesthetic */
-    --background: 222.2 47.4% 11.2%;
-    --foreground: 0 0% 98%;
+    /* Dark Mode Theme */
+    --background: 224 71% 4%; /* Very Dark Blue */
+    --foreground: 0 0% 98%; /* Light Grey */
 
-    --card: 220 40% 15%; /* Darker card background */
+    --card: 220 40% 9%; /* Darker card background */
     --card-foreground: 0 0% 98%;
 
-    --popover: 220 40% 15%;
+    --popover: 220 40% 9%;
     --popover-foreground: 0 0% 98%;
 
-    --primary: 210 40% 50%; /* Brighter primary for dark mode */
+    --primary: 217 91% 60%; /* Same vibrant blue for primary */
     --primary-foreground: 0 0% 98%;
 
-    --secondary: 215 30% 25%; /* Darker secondary */
+    --secondary: 215 28% 27%; /* Darker secondary */
     --secondary-foreground: 0 0% 98%;
 
-    --muted: 215 30% 20%;
-    --muted-foreground: 215 20% 65%;
+    --muted: 215 28% 17%; /* Darker muted background */
+    --muted-foreground: 215 20% 65%; /* Lighter muted text */
 
-    --accent: 43 74% 55%; /* Slightly brighter gold */
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 45 93% 55%; /* Slightly brighter gold for dark mode */
+    --accent-foreground: 224 71% 4%; /* Dark text on gold */
 
-    --destructive: 0 72% 51%; /* Slightly adjusted destructive */
+    --destructive: 0 72% 51%; /* Slightly adjusted destructive red */
     --destructive-foreground: 0 0% 98%;
 
-    --border: 215 30% 25%;
-    --input: 215 30% 25%;
-    --ring: 210 40% 50%; /* Ring color matching primary */
+    --border: 215 28% 17%; /* Dark border */
+    --input: 215 28% 17%; /* Dark input border */
+    --ring: 217 91% 60%; /* Ring color matches primary */
   }
 }
 
 @layer base {
   * {
-    @apply border-border;
+    @apply border-border; /* Apply border color globally */
   }
   body {
     @apply bg-background text-foreground;
-    /* Apply drop shadows for a professional feel */
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+    font-feature-settings: "rlig" 1,"calt" 1; /* Enable common ligatures */
+    /* Removed body-level box-shadow, apply shadows to specific elements like cards */
   }
 
-  /* Add rounded corners and shadows to specific components if needed */
-   .card, .dialog-content, .popover-content, .button, .input, .textarea, .select-trigger {
+  /* Base styles for Shadcn components using CSS variables */
+   .card, .dialog-content, .popover-content, .button, .input, .textarea, .select-trigger, .alert {
       @apply rounded-[var(--radius)];
    }
 
-   /* Adding subtle shadows to cards and dialogs */
+   /* Add shadows for depth - apply selectively */
    .card, .dialog-content, .popover-content {
-       @apply shadow-md;
+       @apply shadow-lg; /* Use a slightly larger shadow for key elements */
    }
-   .button:not([variant="ghost"]):not([variant="link"]) {
-        @apply shadow-sm;
+   .button:not([data-variant="ghost"]):not([data-variant="link"]) {
+        @apply shadow-sm; /* Subtle shadow for standard buttons */
    }
-
-
 }
 
-/* Ensure components look aesthetically pleasing and functional */
-.button {
-  @apply transition-colors duration-200;
+/* Component-specific enhancements */
+@layer components {
+    .button {
+      @apply transition-all duration-150 ease-in-out; /* Faster transitions */
+      @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background; /* Consistent focus */
+    }
+
+    .input, .textarea, .select-trigger {
+      @apply transition-colors duration-150;
+      @apply focus:border-primary focus:ring-primary/50; /* Highlight border on focus */
+    }
+
+    /* Improve focus visibility further */
+    *:focus-visible {
+        @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+    }
+
+    /* Add a subtle border to table rows for better separation */
+    .table tbody tr:not(:last-child) {
+        @apply border-b;
+    }
+
+    /* Style scrollbars for a cleaner look (optional) */
+    ::-webkit-scrollbar {
+      width: 6px; /* Narrower scrollbar */
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: hsl(var(--background) / 0.5);
+      border-radius: 10px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: hsl(var(--muted-foreground) / 0.4);
+      border-radius: 10px;
+      /* border: 1px solid transparent; */
+      /* background-clip: content-box; */
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: hsl(var(--muted-foreground) / 0.6);
+      /* background-clip: content-box; */
+    }
 }
 
-.input, .textarea, .select-trigger {
-  @apply transition-colors duration-200 focus:ring-2 focus:ring-ring focus:ring-offset-2;
-}
-
-/* Style scrollbars for a cleaner look */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: hsl(var(--background) / 0.5);
-  border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.5);
-  border-radius: 10px;
-  border: 2px solid transparent;
-  background-clip: content-box;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground));
-  background-clip: content-box;
-
-}
-
-/* Improve focus visibility */
-*:focus-visible {
-    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
-}
+    
