@@ -55,12 +55,16 @@ export async function middleware(request: NextRequest) {
        return NextResponse.next();
    }
 
-   // 5. Get token from the cookie (Primary source for middleware)
+   // 5. Get token ONLY from the HttpOnly cookie
    const token = request.cookies.get(TOKEN_COOKIE_NAME)?.value;
    let isTokenValid = false;
+   let sessionExpired = false; // Flag to track if token existed but was invalid/expired
 
    if (token) {
        isTokenValid = await verifyToken(token);
+       if (!isTokenValid) {
+           sessionExpired = true; // Token was present but is now invalid/expired
+       }
    } else {
        // console.log('Middleware: No token cookie found.');
    }
@@ -68,7 +72,7 @@ export async function middleware(request: NextRequest) {
    const isAccessingPublicPath = publicPaths.includes(pathname);
    const isAccessingRoot = pathname === '/';
 
-    // 6. Handle Redirects for Logged-in Users accessing Public Pages
+    // 6. Handle Redirects for Logged-in Users accessing Public Pages or Root
     if (isTokenValid && (isAccessingPublicPath || isAccessingRoot)) {
         const targetUrl = new URL('/dashboard', request.url);
         console.log(`Middleware: Redirecting logged-in user from ${pathname} to ${targetUrl.pathname}`);
@@ -80,17 +84,29 @@ export async function middleware(request: NextRequest) {
         if (!isTokenValid) {
             const loginUrl = new URL('/login', request.url);
             loginUrl.searchParams.set('redirect', pathname); // Remember where the user was going
-            if (token) { // If a token existed but was invalid (e.g., expired)
+
+            // Use the sessionExpired flag determined during token verification
+            if (sessionExpired) {
                 loginUrl.searchParams.set('sessionExpired', 'true');
                 console.log(`Middleware: Redirecting to login (session expired) from protected path: ${pathname}`);
             } else {
                 console.log(`Middleware: Redirecting to login (no valid token) from protected path: ${pathname}`);
             }
 
-            // Clear the invalid/expired cookie by setting maxAge to -1
+            // Create the redirect response
             const response = NextResponse.redirect(loginUrl);
-            if (token) {
-                response.cookies.set(TOKEN_COOKIE_NAME, '', { path: '/', maxAge: -1 });
+
+            // Clear the invalid/expired HttpOnly cookie by setting maxAge to 0 or -1
+            // This ensures the browser removes the cookie immediately.
+            if (token) { // Only try to clear if a token actually existed
+                 response.cookies.set(TOKEN_COOKIE_NAME, '', {
+                     path: '/',
+                     httpOnly: true,
+                     secure: process.env.NODE_ENV === 'production',
+                     sameSite: 'strict',
+                     maxAge: 0 // Set maxAge to 0 to expire the cookie
+                 });
+                 console.log('Middleware: Clearing expired/invalid token cookie.');
             }
             return response;
         }

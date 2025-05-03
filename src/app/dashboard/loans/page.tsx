@@ -280,6 +280,7 @@ export default function LoansPage() {
         customerId: formData.customerId,
         description: formData.description,
         amount: amountNum,
+        balance: amountNum, // Include balance equal to amount
         issueDate: formData.issueDate?.toISOString(),
         dueDate: formData.dueDate?.toISOString(),
         frequency: formData.frequency,
@@ -294,7 +295,7 @@ export default function LoansPage() {
         frequency: payloadBase.frequency,
         interestRate: payloadBase.interestRate,
         graceDays: payloadBase.graceDays,
-        // DO NOT SEND: customerId, amount, issueDate if they are immutable
+        // DO NOT SEND: customerId, amount, balance, issueDate if they are immutable
     } : payloadBase; // For POST, send everything
 
 

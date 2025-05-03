@@ -1,0 +1,45 @@
+Okay, let's break down how these features are implemented and address the payment flow:
+
+1.  **Repayment Tracking (POST `/api/repayments`)**
+    *   **Record Repayments:** Yes, this is implemented. The `src/app/api/repayments/route.ts` file handles POST requests. When the shopkeeper records a payment via the UI (likely on the Loan Detail page), it sends the `loanId`, `amount`, and `date` to this endpoint.
+    *   **Auto-update Balance:** Yes. Inside the POST handler in `repayments/route.ts`, it finds the corresponding `Loan`, subtracts the `amount` from the `loan.balance`, and saves the updated loan. This happens within a database transaction to ensure atomicity (either both the repayment is recorded AND the balance is updated, or neither happens).
+    *   **Track Partial Payments:** Yes. Since the balance is simply reduced by the repayment amount, any payment less than the full balance is automatically handled as a partial payment. The `loan.balance` reflects the remaining amount.
+
+2.  **Loan Summary (`/api/summary`)**
+    *   Yes, the `src/app/api/summary/route.ts` file implements this. It uses MongoDB aggregation pipelines to calculate:
+        *   `totalLoaned`: Sum of `amount` from all Loans.
+        *   `totalCollected`: Sum of `amount` from all Repayments.
+        *   `totalOutstanding`: Sum of `balance` for all 'pending' or 'overdue' Loans.
+        *   `totalOverdueAmount`: Sum of `balance` for all 'overdue' Loans.
+        *   `overdueLoanCount`: Count of 'overdue' Loans.
+        *   `averageRepaymentTimeDays`: Calculates the average difference between the `issueDate` and the *last* repayment date for loans that are fully 'paid'.
+    *   **Status Updates:** Crucially, before running the aggregations, this route *first* attempts to update the status of loans (pending -> overdue, or -> paid based on balance) to ensure the summary reflects the most current state.
+
+3.  **Overdue Alerts (`/api/loans/overdue`)**
+    *   Yes, the `src/app/api/loans/overdue/route.ts` file implements this.
+    *   **Auto-tagging [Bonus]:** This route also first runs an update operation to change the status of any 'pending' loans to 'overdue' if their `dueDate` + `graceDays` has passed *before* querying for all loans with the 'overdue' status. This effectively implements the auto-tagging bonus feature *at the time of request*.
+    *   It then returns a list of all loans currently marked as 'overdue', including customer details.
+
+**How Borrowers Pay & How Status is Updated:**
+
+*   **Borrower Payment:** The application is designed as a *record-keeping tool for the shopkeeper*. **The borrower pays the shopkeeper directly, outside of the app** (e.g., with cash, bank transfer, UPI, etc.). The app does *not* include a payment gateway or a portal for the borrower to make payments electronically through the app itself.
+*   **Updating Loan Status:**
+    1.  **Shopkeeper Action:** When the shopkeeper receives a payment from the borrower, they open the CrediKhaata app, navigate to the specific loan (likely via the Customer or Loans list, then to the Loan Detail page), and use the "Record Repayment" feature.
+    2.  **API Call:** The UI sends a request to `POST /api/repayments`.
+    3.  **Backend Logic:**
+        *   The API verifies the request and payment details.
+        *   It creates a new `Repayment` document.
+        *   It **updates the `balance`** on the associated `Loan` document by subtracting the payment amount.
+        *   It **re-calculates the `status`** of the Loan using the `loan.calculateStatus()` method (defined in `src/models/Loan.ts`). This method checks if the new `balance` is now <= 0 (making it 'paid') or if it's still positive but past the due date + grace period ('overdue'), otherwise it remains 'pending'.
+        *   The updated Loan document (with the new balance and potentially new status) is saved.
+    4.  **UI Update:** The UI (like the Loan Detail page or Loans list) refetches the loan data or summary data, showing the reduced balance and potentially the updated status ('pending', 'paid', 'overdue').
+
+**Connection Between Shopkeeper and Borrowers:**
+
+*   The application focuses *solely* on the **shopkeeper's perspective**.
+*   There is **no direct in-app connection or interface for the borrowers**. The relationship exists outside the app.
+*   The "connection" is managed through the `Customer` records, which store the borrower's details (name, phone, etc.) for the shopkeeper's reference.
+*   Bonus features like SMS/WhatsApp integration (if implemented) would be *initiated* by the shopkeeper *through* the app to contact the borrower using the stored phone number, but it wouldn't be a two-way communication platform within the app.
+
+In summary, the core logic for tracking repayments, calculating summaries, and identifying overdue loans (including auto-status updates on read) is implemented correctly based on the requirements. The payment process itself is external to the app, with the shopkeeper manually recording received payments.
+    

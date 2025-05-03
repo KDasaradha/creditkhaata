@@ -7,7 +7,8 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"; // Added Avatar
 import { Menu, LogOut, User, Sun, Moon } from 'lucide-react'; // Changed UserCircle to User
 import Sidebar from './Sidebar';
-import { getDecodedToken, logout, isTokenExpired, getToken } from '@/lib/auth'; // Import necessary auth functions
+// Import specific functions needed client-side
+import { getDecodedTokenClientSide, isTokenExpiredClientSide, getTokenClientSide, logout } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 // Uncomment if using next-themes
 // import { useTheme } from 'next-themes';
@@ -37,14 +38,15 @@ export default function Header() {
   useEffect(() => {
      setMounted(true); // Component has mounted
 
-     // Check token validity and extract user email
+     // Check token validity (from localStorage) and extract user email
      if (typeof window !== 'undefined') {
-         if (!getToken() || isTokenExpired()) {
+         if (!getTokenClientSide() || isTokenExpiredClientSide()) {
              // Let DashboardLayout handle initial redirect if needed
              setUserEmail(null); // Ensure email is cleared
          } else {
              try {
-                const decoded = getDecodedToken(); // Decodes token from cookie/localStorage
+                // Use the client-side decoder
+                const decoded = getDecodedTokenClientSide();
                 if (decoded && decoded.email) {
                   setUserEmail(decoded.email);
                 } else {
@@ -59,13 +61,16 @@ export default function Header() {
      }
   }, []); // Run only once on mount
 
+   /**
+    * Handles the logout process by calling the logout utility function.
+    * @param sessionExpired - Indicates if logout is forced due to session expiry.
+    */
    const handleLogout = (sessionExpired = false) => {
-    console.log(`Header: Initiating logout (sessionExpired: ${sessionExpired})`);
-    logout(); // Clears token from cookie and localStorage
-    // Redirect to login page.
-    const redirectUrl = sessionExpired ? '/login?sessionExpired=true' : '/login';
-    router.push(redirectUrl);
+    console.log(`Header: Calling logout utility (sessionExpired: ${sessionExpired})`);
+    // Pass the router instance to the logout function for redirection
+    logout(router, sessionExpired);
   };
+
 
   // Prevent theme toggle flicker on mount (if theme toggle is used)
   // if (!mounted) {
@@ -99,7 +104,7 @@ export default function Header() {
       {/* Desktop: Placeholder or Breadcrumbs */}
        <div className="hidden md:flex items-center gap-4">
            {/* Placeholder for potential breadcrumbs or page title */}
-           <div className="h-6 w-36 bg-muted rounded animate-pulse"></div>
+           {/* <div className="h-6 w-36 bg-muted rounded animate-pulse"></div> */}
        </div>
 
 
@@ -135,7 +140,7 @@ export default function Header() {
            </Button>
            */}
 
-        {/* Logout Button */}
+        {/* Logout Button - Calls handleLogout */}
         <Button variant="outline" size="sm" onClick={() => handleLogout(false)}>
           <LogOut className="mr-1.5 h-4 w-4" />
           Logout
@@ -144,5 +149,3 @@ export default function Header() {
     </header>
   );
 }
-
-    
