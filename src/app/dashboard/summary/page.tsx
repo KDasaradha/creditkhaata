@@ -239,7 +239,11 @@ export default function SummaryPage() {
                </CardHeader>
                <CardContent className="flex items-center justify-center min-h-[200px] text-muted-foreground bg-muted/20 rounded-b-lg">
                    {/* Chart components would go here */}
-                   <p>Chart area placeholder.</p>
+                   <p>
+                     <p>
+                      Bar chart will be here.
+                    </p>
+                   </p>
                    {/* Example: <BarChart data={chartData} ... /> */}
                </CardContent>
              </Card>

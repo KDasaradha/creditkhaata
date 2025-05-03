@@ -1,9 +1,5 @@
 {
-  "/_not-found/page": "app/_not-found/page.js",
-  "/api/customers/route": "app/api/customers/route.js",
   "/api/summary/route": "app/api/summary/route.js",
-  "/api/loans/route": "app/api/loans/route.js",
-  "/(auth)/login/page": "app/(auth)/login/page.js",
   "/(auth)/register/page": "app/(auth)/register/page.js",
   "/dashboard/page": "app/dashboard/page.js",
   "/dashboard/customers/page": "app/dashboard/customers/page.js",
