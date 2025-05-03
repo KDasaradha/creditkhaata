@@ -8,9 +8,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { UserPlus, AlertTriangle, Loader2 } from 'lucide-react';
+import { UserPlus, AlertTriangle, Loader2, Mail, Lock } from 'lucide-react'; // Added icons
 import Link from 'next/link';
 import { register, isAuthenticated } from '@/lib/auth'; // Use client-side auth functions
+import { cn } from '@/lib/utils'; // Import cn
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('');
@@ -38,6 +39,12 @@ export default function RegisterPage() {
         setError('Email is required.');
         setLoading(false);
         return;
+    }
+    // Basic email format check (more robust validation can be added)
+    if (!/\S+@\S+\.\S+/.test(email)) {
+       setError('Please enter a valid email address.');
+       setLoading(false);
+       return;
     }
     if (password.length < 6) {
        setError('Password must be at least 6 characters long.');
@@ -71,74 +78,86 @@ export default function RegisterPage() {
   };
 
   return (
-     <Card className="w-full max-w-md shadow-xl border-t-4 border-primary rounded-lg overflow-hidden">
+     <Card className="w-full shadow-xl border-t-4 border-primary rounded-lg overflow-hidden animate-in fade-in duration-500">
         <CardHeader className="text-center pt-8 pb-4 bg-card">
-          <UserPlus className="mx-auto h-10 w-10 text-primary mb-3"/>
+          <UserPlus className="mx-auto h-12 w-12 text-primary mb-3"/>
           <CardTitle className="text-2xl font-bold">Create Account</CardTitle>
           <CardDescription>Register for your CrediKhaata dashboard</CardDescription>
         </CardHeader>
-        <CardContent className="px-6 py-6 space-y-4">
+        <CardContent className="px-6 py-6 space-y-6">
            {error && (
              <Alert variant="destructive">
-               <AlertTriangle className="h-4 w-4" />
-               <AlertTitle>Registration Failed</AlertTitle>
+               <AlertTriangle className="h-5 w-5" />
+               <AlertTitle className="font-semibold">Registration Failed</AlertTitle>
                <AlertDescription>{error}</AlertDescription>
              </Alert>
            )}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="email">Email</Label>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="space-y-1.5 relative">
+               <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground peer-focus:text-primary" />
+               <Label htmlFor="email" className={cn("absolute left-10 top-1/2 transform -translate-y-1/2 text-xs text-muted-foreground transition-all", email && "-top-2.5 bg-card px-1 left-8 text-[10px]")}>Email</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="your.email@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 disabled={loading}
                 autoComplete="email"
+                className="pl-10 h-11 text-base peer pt-3"
+                placeholder=" "
               />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="password">Password</Label>
+            <div className="space-y-1.5 relative">
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground peer-focus:text-primary" />
+                <Label htmlFor="password" className={cn("absolute left-10 top-1/2 transform -translate-y-1/2 text-xs text-muted-foreground transition-all", password && "-top-2.5 bg-card px-1 left-8 text-[10px]")}>Password</Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="•••••••• (min. 6 characters)"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={6}
                 disabled={loading}
                 autoComplete="new-password"
+                className="pl-10 h-11 text-base peer pt-3"
+                placeholder=" "
               />
+              <p className="text-xs text-muted-foreground pl-10 pt-1">Minimum 6 characters required.</p>
             </div>
-             <div className="space-y-1.5">
-              <Label htmlFor="confirm-password">Confirm Password</Label>
+             <div className="space-y-1.5 relative">
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground peer-focus:text-primary" />
+                <Label htmlFor="confirm-password" className={cn("absolute left-10 top-1/2 transform -translate-y-1/2 text-xs text-muted-foreground transition-all", confirmPassword && "-top-2.5 bg-card px-1 left-8 text-[10px]")}>Confirm Password</Label>
               <Input
                 id="confirm-password"
                 type="password"
-                placeholder="••••••••"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
                 minLength={6}
                 disabled={loading}
                 autoComplete="new-password"
+                 className={cn("pl-10 h-11 text-base peer pt-3", password && confirmPassword && password !== confirmPassword ? 'border-destructive focus-visible:ring-destructive' : '')} // Highlight if passwords don't match
+                placeholder=" "
               />
+              {password && confirmPassword && password !== confirmPassword && (
+                   <p className="text-xs text-destructive pl-10 pt-1">Passwords do not match.</p>
+              )}
             </div>
-            <Button type="submit" className="w-full h-10 text-base font-semibold" disabled={loading}>
-              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <Button type="submit" className="w-full h-11 text-base font-semibold" disabled={loading}>
+              {loading && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
               {loading ? 'Registering...' : 'Register'}
             </Button>
           </form>
         </CardContent>
-         <CardFooter className="flex flex-col items-center text-sm bg-muted/50 py-4">
+         <CardFooter className="flex flex-col items-center text-sm bg-muted/50 py-5 border-t">
              <p className="text-muted-foreground">Already have an account?</p>
-              <Link href="/login" className="font-medium text-primary hover:underline hover:text-primary/80 transition-colors">
+              <Link href="/login" className="font-semibold text-primary hover:underline hover:text-primary/80 transition-colors mt-1">
                  Login here
               </Link>
          </CardFooter>
       </Card>
   );
 }
+
+    

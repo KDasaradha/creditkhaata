@@ -6,11 +6,12 @@ import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Loader2, AlertTriangle, CircleDollarSign, PiggyBank, Clock, Users, ListChecks, PlusCircle, FileText, TrendingUp, TrendingDown } from 'lucide-react'; // Added trend icons
+import { Loader2, AlertTriangle, CircleDollarSign, PiggyBank, Clock, Users, ListChecks, PlusCircle, FileText, TrendingUp, TrendingDown, ArrowRight } from 'lucide-react'; // Added trend icons, ArrowRight
 import { getAuthHeaders } from '@/lib/auth';
+import { cn } from '@/lib/utils';
 
 // Use NEXT_PUBLIC_ prefix for client-side environment variables
-const API_URL = process.env.NEXT_PUBLIC_API_URL; // Corrected variable name
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 // Interface for the summary data expected from the API
 interface ShopkeeperSummary {
@@ -32,7 +33,7 @@ export default function DashboardPage() {
   // Fetch summary data function
   const fetchSummary = useCallback(async () => {
      if (!API_URL) {
-         setError("API URL is not configured.");
+         setError("API URL is not configured. Please check environment variables.");
          setLoading(false);
          return;
      }
@@ -63,29 +64,29 @@ export default function DashboardPage() {
 
   // Helper to format currency
   const formatCurrency = (amount: number | null | undefined): string => {
-    if (amount === null || amount === undefined) return '₹--';
-    return `₹${Number(amount).toFixed(2)}`;
+    if (amount === null || amount === undefined) return '₹ --.--'; // More distinct placeholder
+    return `₹${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; // Use localeString for Indian format
   };
 
   return (
-    <div className="container mx-auto py-6 px-4 md:px-6 space-y-6">
+    <div className="container mx-auto py-6 px-4 md:px-6 space-y-8">
       {/* Dashboard Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">Welcome back! Here's a quick overview of your business.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
+          <p className="text-muted-foreground mt-1">Welcome back! Here's a quick overview of your business.</p>
         </div>
          {/* Quick Action Buttons */}
         <div className="flex gap-2 flex-wrap">
            {/* Link to add customer page with #add hash */}
            <Link href="/dashboard/customers#add" passHref>
-             <Button size="sm">
+             <Button>
                  <Users className="mr-2 h-4 w-4" /> Add Customer
              </Button>
            </Link>
            {/* Link to add loan page with #add hash */}
            <Link href="/dashboard/loans#add" passHref>
-             <Button variant="secondary" size="sm">
+             <Button variant="secondary">
                  <PlusCircle className="mr-2 h-4 w-4" /> Add Loan
              </Button>
            </Link>
@@ -105,16 +106,15 @@ export default function DashboardPage() {
        )}
 
       {/* Summary Cards Section */}
-      {/* Add a subtle border or background to the main summary card */}
       <Card className="border border-border shadow-sm rounded-lg">
         <CardHeader className="border-b">
-          <CardTitle>Quick Summary</CardTitle>
+          <CardTitle>Financial Snapshot</CardTitle>
           <CardDescription>Key metrics at a glance.</CardDescription>
         </CardHeader>
         <CardContent className="pt-6">
             {/* Loading State */}
             {loading && (
-                 <div className="flex justify-center items-center py-10 text-muted-foreground">
+                 <div className="flex justify-center items-center py-16 text-muted-foreground">
                     <Loader2 className="h-6 w-6 animate-spin text-primary" />
                     <span className="ml-3 text-lg">Loading summary...</span>
                 </div>
@@ -123,50 +123,50 @@ export default function DashboardPage() {
             {summary && !loading && !error && (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 {/* Outstanding Balance Card */}
-                 <Card className="hover:shadow-md transition-shadow border">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Outstanding Balance</CardTitle>
-                         <ListChecks className="h-4 w-4 text-orange-500" />
+                 <Card className="group hover:shadow-lg transition-shadow border border-border rounded-lg overflow-hidden">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-muted/30">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Outstanding Balance</CardTitle>
+                         <ListChecks className="h-5 w-5 text-orange-500 group-hover:scale-110 transition-transform" />
                     </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-orange-600">{formatCurrency(summary.totalOutstanding)}</div>
-                        <p className="text-xs text-muted-foreground">{summary.activeLoanCount ?? '--'} active loan(s)</p>
+                    <CardContent className="pt-4">
+                        <div className="text-3xl font-bold text-orange-600">{formatCurrency(summary.totalOutstanding)}</div>
+                        <p className="text-xs text-muted-foreground mt-1">{summary.activeLoanCount ?? '--'} active loan(s)</p>
                     </CardContent>
                 </Card>
 
                  {/* Overdue Amount Card */}
-                 <Card className="hover:shadow-md transition-shadow border border-destructive/50">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Overdue Amount</CardTitle>
-                        <AlertTriangle className="h-4 w-4 text-destructive" />
+                 <Card className="group hover:shadow-lg transition-shadow border border-destructive/60 rounded-lg overflow-hidden">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-destructive/10">
+                        <CardTitle className="text-sm font-medium text-destructive/90">Overdue Amount</CardTitle>
+                        <AlertTriangle className="h-5 w-5 text-destructive group-hover:scale-110 transition-transform" />
                     </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-destructive">{formatCurrency(summary.totalOverdueAmount)}</div>
-                        <p className="text-xs text-muted-foreground">{summary.overdueLoanCount ?? '--'} overdue loan(s)</p>
+                    <CardContent className="pt-4">
+                        <div className="text-3xl font-bold text-destructive">{formatCurrency(summary.totalOverdueAmount)}</div>
+                        <p className="text-xs text-muted-foreground mt-1">{summary.overdueLoanCount ?? '--'} overdue loan(s)</p>
                     </CardContent>
                 </Card>
 
                  {/* Total Collected Card */}
-                 <Card className="hover:shadow-md transition-shadow border">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total Collected</CardTitle>
-                        <PiggyBank className="h-4 w-4 text-green-600" />
+                 <Card className="group hover:shadow-lg transition-shadow border border-border rounded-lg overflow-hidden">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-muted/30">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Total Collected</CardTitle>
+                        <PiggyBank className="h-5 w-5 text-green-600 group-hover:scale-110 transition-transform" />
                     </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-green-600">{formatCurrency(summary.totalCollected)}</div>
-                        <p className="text-xs text-muted-foreground">Total amount repaid</p>
+                    <CardContent className="pt-4">
+                        <div className="text-3xl font-bold text-green-600">{formatCurrency(summary.totalCollected)}</div>
+                        <p className="text-xs text-muted-foreground mt-1">Total amount repaid</p>
                     </CardContent>
                 </Card>
 
                  {/* Total Customers Card */}
-                 <Card className="hover:shadow-md transition-shadow border">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total Customers</CardTitle>
-                        <Users className="h-4 w-4 text-muted-foreground" />
+                 <Card className="group hover:shadow-lg transition-shadow border border-border rounded-lg overflow-hidden">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-muted/30">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Total Customers</CardTitle>
+                        <Users className="h-5 w-5 text-muted-foreground group-hover:scale-110 transition-transform" />
                     </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{summary.totalCustomers ?? '--'}</div>
-                         <p className="text-xs text-muted-foreground">Registered customers</p>
+                    <CardContent className="pt-4">
+                        <div className="text-3xl font-bold">{summary.totalCustomers ?? '--'}</div>
+                         <p className="text-xs text-muted-foreground mt-1">Registered customers</p>
                     </CardContent>
                  </Card>
 
@@ -174,7 +174,7 @@ export default function DashboardPage() {
             )}
              {/* Message if summary is empty and not loading */}
              {!summary && !loading && !error && (
-                <div className="text-center py-10 text-muted-foreground">
+                <div className="text-center py-16 text-muted-foreground">
                     No summary data available yet. Start by adding customers and loans.
                 </div>
              )}
@@ -184,47 +184,54 @@ export default function DashboardPage() {
         {/* Quick Navigation Links */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {/* Manage Customers Card Link */}
-           <Card className="hover:bg-muted/50 transition-colors border">
-             <Link href="/dashboard/customers" className="block h-full">
-               <CardHeader>
-                   <CardTitle className="flex items-center gap-2 text-base"><Users className="h-5 w-5 text-primary"/> Manage Customers</CardTitle>
-               </CardHeader>
-               <CardContent>
-                   <CardDescription className="text-sm">View, add, or edit your customer profiles.</CardDescription>
-                   {/* <Button variant="link" size="sm" className="mt-2 p-0 h-auto">Go to Customers <ArrowRight className="ml-1 h-4 w-4"/></Button> */}
-               </CardContent>
+           <Card className="group hover:bg-accent/5 hover:border-primary/50 transition-colors border rounded-lg">
+             <Link href="/dashboard/customers" className="block h-full p-6">
+               <div className="flex items-center justify-between mb-2">
+                   <CardTitle className="flex items-center gap-2 text-lg"><Users className="h-5 w-5 text-primary"/> Customers</CardTitle>
+                   <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-1 transition-transform" />
+               </div>
+               <CardDescription className="text-sm">View, add, or edit your customer profiles.</CardDescription>
              </Link>
            </Card>
             {/* Manage Loans Card Link */}
-           <Card className="hover:bg-muted/50 transition-colors border">
-              <Link href="/dashboard/loans" className="block h-full">
-               <CardHeader>
-                   <CardTitle className="flex items-center gap-2 text-base"><ListChecks className="h-5 w-5 text-primary"/> Manage Loans</CardTitle>
-               </CardHeader>
-               <CardContent>
-                   <CardDescription className="text-sm">Track all active and past credit sales and repayments.</CardDescription>
-                    {/* <Button variant="link" size="sm" className="mt-2 p-0 h-auto">Go to Loans <ArrowRight className="ml-1 h-4 w-4"/></Button> */}
-               </CardContent>
+           <Card className="group hover:bg-accent/5 hover:border-primary/50 transition-colors border rounded-lg">
+              <Link href="/dashboard/loans" className="block h-full p-6">
+               <div className="flex items-center justify-between mb-2">
+                  <CardTitle className="flex items-center gap-2 text-lg"><ListChecks className="h-5 w-5 text-primary"/> Loans</CardTitle>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-1 transition-transform" />
+               </div>
+               <CardDescription className="text-sm">Track all active and past credit sales and repayments.</CardDescription>
               </Link>
            </Card>
             {/* View Summary Card Link */}
-            <Card className="hover:bg-muted/50 transition-colors border">
-              <Link href="/dashboard/summary" className="block h-full">
-               <CardHeader>
-                   <CardTitle className="flex items-center gap-2 text-base"><FileText className="h-5 w-5 text-primary"/> View Full Summary</CardTitle>
-               </CardHeader>
-               <CardContent>
-                   <CardDescription className="text-sm">See detailed statistics and performance metrics.</CardDescription>
-                   {/* <Button variant="link" size="sm" className="mt-2 p-0 h-auto">Go to Summary <ArrowRight className="ml-1 h-4 w-4"/></Button> */}
-               </CardContent>
+            <Card className="group hover:bg-accent/5 hover:border-primary/50 transition-colors border rounded-lg">
+              <Link href="/dashboard/summary" className="block h-full p-6">
+               <div className="flex items-center justify-between mb-2">
+                 <CardTitle className="flex items-center gap-2 text-lg"><FileText className="h-5 w-5 text-primary"/> Full Summary</CardTitle>
+                 <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-1 transition-transform" />
+               </div>
+               <CardDescription className="text-sm">See detailed statistics and performance metrics.</CardDescription>
                </Link>
            </Card>
         </div>
 
          {/* Potential Area for Overdue Loan Snippet or other insights */}
          {/* Consider fetching a small list of top overdue loans here */}
-         {/* <Card> <CardHeader> <CardTitle>Overdue Loans Alert</CardTitle> </CardHeader> <CardContent> ... List of few overdue loans ... </CardContent> </Card> */}
+         {/*
+         <Card>
+            <CardHeader>
+                <CardTitle className="text-lg">Overdue Loan Alerts</CardTitle>
+                <CardDescription>Top loans requiring attention.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                {/* Render list of overdue loans */}
+                {/* <p className="text-muted-foreground text-sm">No overdue loans needing immediate attention.</p> */}
+           /* </CardContent>
+         </Card>
+         */}
 
     </div>
   );
 }
+
+    

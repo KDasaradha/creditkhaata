@@ -4,17 +4,27 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { Menu, LogOut, UserCircle, Sun, Moon } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"; // Added Avatar
+import { Menu, LogOut, User, Sun, Moon } from 'lucide-react'; // Changed UserCircle to User
 import Sidebar from './Sidebar';
 import { getDecodedToken, logout, isTokenExpired, getToken } from '@/lib/auth'; // Import necessary auth functions
 import { useRouter } from 'next/navigation';
 // Uncomment if using next-themes
 // import { useTheme } from 'next-themes';
+import { cn } from '@/lib/utils';
 
 interface DecodedToken {
   id: string; // From JWT payload
   email: string; // From JWT payload
 }
+
+// Helper function to get initials from email
+const getInitials = (email: string | null): string => {
+  if (!email) return '?';
+  const parts = email.split('@')[0];
+  if (parts.length === 0) return '?';
+  return parts[0].toUpperCase(); // Just the first letter
+};
 
 export default function Header() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -30,27 +40,20 @@ export default function Header() {
      // Check token validity and extract user email
      if (typeof window !== 'undefined') {
          if (!getToken() || isTokenExpired()) {
-             // If token is missing or expired on initial load, trigger logout logic
-             console.log("Header Effect: Token missing or expired on load.");
-             // handleLogout(true); // Let DashboardLayout handle initial redirect
+             // Let DashboardLayout handle initial redirect if needed
              setUserEmail(null); // Ensure email is cleared
          } else {
              try {
                 const decoded = getDecodedToken(); // Decodes token from cookie/localStorage
                 if (decoded && decoded.email) {
                   setUserEmail(decoded.email);
-                //   console.log("Header Effect: User email set -", decoded.email);
                 } else {
                     console.warn("Header Effect: Token decoded but email missing.");
                     setUserEmail(null);
-                     // Optionally trigger logout if payload is invalid
-                     // handleLogout(false);
                 }
              } catch (error) {
                  console.error("Header Effect: Failed to decode token:", error);
                  setUserEmail(null);
-                 // Optionally trigger logout on decode error
-                 // handleLogout(false);
              }
          }
      }
@@ -59,24 +62,26 @@ export default function Header() {
    const handleLogout = (sessionExpired = false) => {
     console.log(`Header: Initiating logout (sessionExpired: ${sessionExpired})`);
     logout(); // Clears token from cookie and localStorage
-    // Redirect to login page. The middleware and DashboardLayout should also handle this,
-    // but explicit redirect here ensures it happens immediately on user action.
+    // Redirect to login page.
     const redirectUrl = sessionExpired ? '/login?sessionExpired=true' : '/login';
     router.push(redirectUrl);
-    // Optional: Force a full page refresh if state issues persist after logout
-    // window.location.href = redirectUrl;
   };
 
-  // Prevent theme toggle flicker on mount
+  // Prevent theme toggle flicker on mount (if theme toggle is used)
   // if (!mounted) {
-  //   return null; // Or a placeholder
+  //   return <header className="flex h-16 items-center border-b bg-card px-4 md:px-6 sticky top-0 z-30 flex-shrink-0"></header>; // Render placeholder to avoid layout shift
   // }
 
+  const userInitials = getInitials(userEmail);
 
   return (
-    <header className="flex h-16 items-center justify-between border-b bg-card px-4 md:px-6 sticky top-0 z-30 flex-shrink-0 print:hidden">
-      {/* Mobile Menu Button */}
-      <div className="md:hidden">
+    <header className={cn(
+        "flex h-16 items-center justify-between border-b bg-card px-4 md:px-6 sticky top-0 z-30 flex-shrink-0 print:hidden",
+        // Add a subtle shadow to the header
+        "shadow-sm"
+     )}>
+      {/* Mobile Menu Button & App Name */}
+      <div className="flex items-center gap-4 md:hidden">
         <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
           <SheetTrigger asChild>
             <Button variant="outline" size="icon" aria-label="Toggle navigation menu">
@@ -84,40 +89,48 @@ export default function Header() {
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="w-full max-w-xs p-0" >
-            {/* Pass isMobile and a function to close the sheet */}
-             {/* The Link components within Sidebar should handle closing */}
              <Sidebar isMobile={true} onNavigate={() => setIsSheetOpen(false)} />
           </SheetContent>
         </Sheet>
+        {/* Show App Name on Mobile next to menu */}
+         <span className="font-bold text-lg text-primary">CrediKhaata</span>
       </div>
 
-      {/* Desktop: Placeholder or App Name/Title - kept minimal */}
+      {/* Desktop: Placeholder or Breadcrumbs */}
        <div className="hidden md:flex items-center gap-4">
-           {/* Could add Breadcrumbs or dynamic page title here later */}
+           {/* Placeholder for potential breadcrumbs or page title */}
+           <div className="h-6 w-36 bg-muted rounded animate-pulse"></div>
        </div>
 
 
       {/* Right Side: User Info and Actions */}
-      <div className="flex items-center gap-3 md:gap-4">
-         {/* Display User Email */}
-         {userEmail && (
-            <div className="flex items-center gap-2 text-sm" title={userEmail}>
-                 <UserCircle className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                 <span className="hidden sm:inline max-w-[150px] truncate text-muted-foreground font-medium">{userEmail}</span>
-            </div>
-         )}
+      <div className="flex items-center gap-4">
+         {/* Display User Avatar/Email */}
+         <div className="flex items-center gap-2 text-sm">
+            <Avatar className="h-8 w-8">
+                {/* Add AvatarImage if you have user profile pics */}
+                {/* <AvatarImage src="user-avatar.jpg" alt={userEmail || 'User'} /> */}
+                <AvatarFallback className="bg-primary/20 text-primary font-semibold">
+                    {userInitials}
+                </AvatarFallback>
+            </Avatar>
+             {userEmail && (
+                 <span className="hidden lg:inline max-w-[180px] truncate text-muted-foreground font-medium">{userEmail}</span>
+             )}
+         </div>
 
           {/* Optional: Theme Toggle Example */}
           {/*
           <Button
-             variant="outline"
+             variant="ghost" // Use ghost for less emphasis
              size="icon"
              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
              aria-label="Toggle theme"
+             className="text-muted-foreground hover:text-foreground"
            >
              {theme === 'dark' ?
-                <Sun className="h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-              : <Moon className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+                <Sun className="h-5 w-5" />
+              : <Moon className="h-5 w-5" />
               }
            </Button>
            */}
@@ -131,3 +144,5 @@ export default function Header() {
     </header>
   );
 }
+
+    

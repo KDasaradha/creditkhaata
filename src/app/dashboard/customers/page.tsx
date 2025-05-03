@@ -10,16 +10,18 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { PlusCircle, Edit, Trash2, AlertTriangle, Loader2, UserPlus, Users } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, AlertTriangle, Loader2, UserPlus, Users, Phone, HomeIcon, Star, IndianRupee, ArrowRight } from 'lucide-react'; // Added relevant icons
 import { getAuthHeaders } from '@/lib/auth';
 import { format } from 'date-fns';
 import { Types } from 'mongoose'; // Import Types
+import Link from 'next/link';
+import { cn } from '@/lib/utils';
 
 // Use NEXT_PUBLIC_ prefix for client-side environment variables
-const API_URL = process.env.NEXT_PUBLIC_API_URL; // Corrected variable name
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface Customer {
-  _id: string; // Keep as string for frontend use
+  _id: string;
   name: string;
   phone: string;
   address?: string;
@@ -84,7 +86,7 @@ export default function CustomersPage() {
          if (hash === '#add') {
              handleOpenForm();
              // Optionally remove hash to prevent re-opening on refresh
-             // window.history.replaceState(null, '', window.location.pathname + window.location.search);
+             window.history.replaceState(null, '', window.location.pathname + window.location.search);
          }
      }
     fetchCustomers();
@@ -164,7 +166,12 @@ export default function CustomersPage() {
         setIsSubmitting(false);
         return;
      }
-     // Add phone number format validation if desired
+     // Basic Indian phone number format check (optional, can be more robust)
+     if (!/^[6-9]\d{9}$/.test(formData.phone.replace(/\s+/g, ''))) {
+         setFormError('Please enter a valid 10-digit Indian mobile number.');
+         setIsSubmitting(false);
+         return;
+     }
 
     const url = editingCustomer
       ? `${API_URL}/customers/${editingCustomer._id}`
@@ -175,6 +182,7 @@ export default function CustomersPage() {
         ...formData,
         trustScore: trustScoreNum,
         creditLimit: creditLimitNum,
+        phone: formData.phone.replace(/\s+/g, ''), // Clean phone number before sending
     };
 
 
@@ -190,6 +198,10 @@ export default function CustomersPage() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ message: 'Failed to parse error response' }));
+        // Check for specific duplicate phone error if backend provides it
+        if (response.status === 409 || (response.status === 400 && errorData.message?.toLowerCase().includes('phone'))) {
+             throw new Error(`Phone number ${formData.phone} might already be registered.`);
+        }
         throw new Error(errorData.message || `Failed to ${editingCustomer ? 'update' : 'add'} customer (${response.status})`);
       }
 
@@ -233,7 +245,7 @@ export default function CustomersPage() {
           if (!response.ok) {
               const errorData = await response.json().catch(() => ({ message: 'Failed to parse error response' }));
                // Specific check for constraint violation (customer has loans)
-               if (response.status === 400 && errorData.message?.includes('loans')) {
+               if (response.status === 400 && errorData.message?.includes('loan')) { // Check for 'loan'
                     setError(`Cannot delete "${customerToDelete.name}": ${errorData.message}`);
                } else {
                    throw new Error(errorData.message || `Failed to delete customer (${response.status})`);
@@ -250,15 +262,22 @@ export default function CustomersPage() {
       } catch (err: any) {
           console.error("Delete Customer Error:", err);
            // Show error on the main page
-           setError(err.message || 'An unknown error occurred while deleting.');
+           setError(`Delete failed: ${err.message}`);
            closeDeleteDialog(); // Close dialog on general errors
       } finally {
           setIsDeleting(false); // Ensure deleting state is always reset
       }
   };
 
+  // Helper to format currency
+   const formatCurrency = (amount: number | null | undefined): string => {
+     if (amount === null || amount === undefined) return '₹ --.--';
+     return `₹${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+   };
+
+
   return (
-    <div className="container mx-auto py-6 px-4 md:px-6 space-y-6">
+    <div className="container mx-auto py-6 px-4 md:px-6 space-y-8">
       {/* Main Error Alert */}
       {error && (
         <Alert variant="destructive">
@@ -276,7 +295,7 @@ export default function CustomersPage() {
       <Card className="shadow-md rounded-lg overflow-hidden border border-border">
         <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 sm:p-6 bg-card border-b">
           <div>
-            <CardTitle className="text-xl font-semibold flex items-center gap-2"><Users className="h-5 w-5 text-primary"/> Manage Customers</CardTitle>
+            <CardTitle className="text-2xl font-bold flex items-center gap-2"><Users className="h-6 w-6 text-primary"/> Manage Customers</CardTitle>
             <CardDescription className="text-muted-foreground mt-1">Add, view, edit, or delete customer profiles.</CardDescription>
           </div>
           {/* Add Customer Dialog */}
@@ -289,39 +308,49 @@ export default function CustomersPage() {
                 </DialogTrigger>
                  {/* Dialog Content for Add/Edit */}
                 <DialogContent
-                    className="sm:max-w-[480px]"
+                    className="sm:max-w-[520px]"
                     onInteractOutside={(e) => { if (isSubmitting) e.preventDefault(); }}
                     onEscapeKeyDown={(e) => { if (isSubmitting) e.preventDefault(); }}
                 >
                     <DialogHeader>
-                        <DialogTitle>{editingCustomer ? 'Edit Customer' : 'Add New Customer'}</DialogTitle>
+                        <DialogTitle className="text-xl">{editingCustomer ? 'Edit Customer Details' : 'Add New Customer'}</DialogTitle>
                     </DialogHeader>
                     {/* Form inside the dialog */}
-                    <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+                    <form onSubmit={handleSubmit} className="space-y-5 pt-4 max-h-[70vh] overflow-y-auto pr-2">
                         {/* Name Input */}
                         <div className="space-y-2">
-                           <Label htmlFor="name">Name <span className="text-destructive">*</span></Label>
-                           <Input id="name" name="name" value={formData.name} onChange={handleInputChange} required disabled={isSubmitting} placeholder="e.g., John Doe"/>
+                           <Label htmlFor="name">Full Name <span className="text-destructive">*</span></Label>
+                           <Input id="name" name="name" value={formData.name} onChange={handleInputChange} required disabled={isSubmitting} placeholder="e.g., John Doe" className="text-base"/>
                         </div>
                         {/* Phone Input */}
                         <div className="space-y-2">
-                            <Label htmlFor="phone">Phone <span className="text-destructive">*</span></Label>
-                            <Input id="phone" name="phone" value={formData.phone} onChange={handleInputChange} required disabled={isSubmitting} placeholder="e.g., 9876543210"/>
+                            <Label htmlFor="phone">Mobile Number <span className="text-destructive">*</span></Label>
+                             <div className="relative">
+                                <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                <Input id="phone" name="phone" type="tel" value={formData.phone} onChange={handleInputChange} required disabled={isSubmitting} placeholder="e.g., 9876543210" className="pl-10 text-base"/>
+                             </div>
+                             <p className="text-xs text-muted-foreground">Enter a 10-digit Indian mobile number.</p>
                         </div>
                         {/* Address Textarea */}
                         <div className="space-y-2">
                            <Label htmlFor="address">Address</Label>
-                           <Textarea id="address" name="address" value={formData.address ?? ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="Optional: Customer's address"/>
+                           <Textarea id="address" name="address" value={formData.address ?? ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="Optional: House No, Street, Area, City" rows={3}/>
                         </div>
                         {/* Trust Score and Credit Limit Inputs */}
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor="trustScore">Trust Score (0-10)</Label>
-                                <Input id="trustScore" name="trustScore" type="number" min="0" max="10" value={formData.trustScore} onChange={handleInputChange} required disabled={isSubmitting} />
+                                <div className="relative">
+                                  <Star className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                  <Input id="trustScore" name="trustScore" type="number" min="0" max="10" value={formData.trustScore} onChange={handleInputChange} required disabled={isSubmitting} className="pl-10"/>
+                                </div>
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="creditLimit">Credit Limit (₹)</Label>
-                                <Input id="creditLimit" name="creditLimit" type="number" min="0" step="any" value={formData.creditLimit} onChange={handleInputChange} required disabled={isSubmitting} placeholder="e.g., 5000" />
+                                <Label htmlFor="creditLimit">Credit Limit</Label>
+                                <div className="relative">
+                                   <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                   <Input id="creditLimit" name="creditLimit" type="number" min="0" step="any" value={formData.creditLimit} onChange={handleInputChange} required disabled={isSubmitting} placeholder="e.g., 5000" className="pl-10"/>
+                                </div>
                            </div>
                         </div>
 
@@ -329,15 +358,13 @@ export default function CustomersPage() {
                        {formError && (
                            <Alert variant="destructive">
                                <AlertTriangle className="h-4 w-4" />
-                               <AlertTitle>Form Error</AlertTitle>
+                               <AlertTitle>Error</AlertTitle>
                                <AlertDescription>{formError}</AlertDescription>
                            </Alert>
                        )}
                        {/* Dialog Footer with Actions */}
-                       <DialogFooter className="pt-4">
-                           <DialogClose asChild>
-                              <Button type="button" variant="outline" onClick={handleCloseForm} disabled={isSubmitting}>Cancel</Button>
-                           </DialogClose>
+                       <DialogFooter className="pt-5 sticky bottom-0 bg-background py-4 border-t">
+                           <Button type="button" variant="outline" onClick={handleCloseForm} disabled={isSubmitting}>Cancel</Button>
                            <Button type="submit" disabled={isSubmitting}>
                               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                               {editingCustomer ? 'Save Changes' : 'Add Customer'}
@@ -350,16 +377,16 @@ export default function CustomersPage() {
         {/* Customer Table Content */}
         <CardContent className="p-0">
           {loading ? (
-             <div className="flex justify-center items-center py-16 text-muted-foreground">
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+             <div className="flex justify-center items-center py-20 text-muted-foreground">
+                <Loader2 className="mr-2 h-5 w-5 animate-spin text-primary" />
                  <span>Loading customers...</span>
              </div>
           ) : customers.length === 0 ? (
               // Empty State Message
-              <div className="text-center py-16 px-6">
-                 <Users className="mx-auto h-12 w-12 text-muted-foreground/50 mb-4" />
-                 <p className="text-muted-foreground font-medium mb-2">No customers found.</p>
-                 <p className="text-muted-foreground text-sm mb-4">Click "Add Customer" to get started.</p>
+              <div className="text-center py-20 px-6 bg-muted/30">
+                 <Users className="mx-auto h-16 w-16 text-muted-foreground/40 mb-5" />
+                 <p className="text-xl font-semibold text-foreground mb-2">No Customers Found</p>
+                 <p className="text-muted-foreground text-sm mb-6 max-w-xs mx-auto">It looks like you haven't added any customers yet. Add your first customer to start tracking loans.</p>
                  {/* Button to open the add form */}
                  <Button onClick={() => handleOpenForm()}>
                     <UserPlus className="mr-2 h-4 w-4" /> Add First Customer
@@ -371,41 +398,39 @@ export default function CustomersPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Phone</TableHead>
-                      <TableHead className="hidden md:table-cell">Address</TableHead>
-                      <TableHead className="text-center">Trust</TableHead>
-                      <TableHead className="text-right">Credit Limit</TableHead>
-                       <TableHead className="hidden lg:table-cell text-right">Added On</TableHead>
+                      <TableHead className="pl-6">Name</TableHead>
+                      <TableHead><Phone className="inline-block h-4 w-4 mr-1"/>Phone</TableHead>
+                      <TableHead className="hidden md:table-cell"><HomeIcon className="inline-block h-4 w-4 mr-1"/>Address</TableHead>
+                      <TableHead className="text-center"><Star className="inline-block h-4 w-4 mr-1"/>Trust</TableHead>
+                      <TableHead className="text-right"><IndianRupee className="inline-block h-4 w-4 mr-1"/>Credit Limit</TableHead>
+                       <TableHead className="hidden lg:table-cell text-right pr-6">Added On</TableHead>
                       {/* Sticky Actions Column */}
-                      <TableHead className="text-right sticky right-0 bg-card z-10 px-2 md:px-4">Actions</TableHead>
+                      <TableHead className="text-right sticky right-0 bg-card z-10 px-4">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {customers.map((customer) => (
-                      <TableRow key={customer._id} className="hover:bg-muted/50">
-                        <TableCell className="font-medium">{customer.name}</TableCell>
+                      <TableRow key={customer._id} className="group hover:bg-muted/50">
+                        <TableCell className="font-medium pl-6">{customer.name}</TableCell>
                         <TableCell>{customer.phone}</TableCell>
-                        <TableCell className="hidden md:table-cell max-w-xs truncate text-muted-foreground">{customer.address || 'N/A'}</TableCell>
-                        <TableCell className="text-center">{customer.trustScore}/10</TableCell>
-                        {/* Format currency */}
-                        <TableCell className="text-right">₹{Number(customer.creditLimit).toFixed(2)}</TableCell>
-                        {/* Format date */}
-                        <TableCell className="hidden lg:table-cell text-right text-sm text-muted-foreground">
+                        <TableCell className="hidden md:table-cell max-w-xs truncate text-muted-foreground">{customer.address || '--'}</TableCell>
+                        <TableCell className="text-center font-medium">{customer.trustScore}/10</TableCell>
+                        <TableCell className="text-right">{formatCurrency(customer.creditLimit)}</TableCell>
+                        <TableCell className="hidden lg:table-cell text-right text-sm text-muted-foreground pr-6">
                             {format(new Date(customer.createdAt), 'dd MMM yyyy')}
                         </TableCell>
                         {/* Action Buttons - Sticky */}
-                        <TableCell className="text-right space-x-1 sticky right-0 bg-card z-10 px-2 md:px-4">
-                            {/* Edit Button */}
-                            <Button variant="ghost" size="icon" className="hover:text-primary h-8 w-8" onClick={() => handleOpenForm(customer)} title="Edit">
-                                <Edit className="h-4 w-4" />
-                                 <span className="sr-only">Edit</span>
-                            </Button>
-                            {/* Delete Button */}
-                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 h-8 w-8" onClick={() => openDeleteDialog(customer)} title="Delete">
-                                <Trash2 className="h-4 w-4" />
-                                 <span className="sr-only">Delete</span>
-                            </Button>
+                        <TableCell className="text-right space-x-1 sticky right-0 bg-card group-hover:bg-muted/50 transition-colors z-10 px-4">
+                             {/* Edit Button */}
+                             <Button variant="ghost" size="icon" className="hover:text-primary h-8 w-8" onClick={() => handleOpenForm(customer)} title="Edit">
+                                 <Edit className="h-4 w-4" />
+                                  <span className="sr-only">Edit</span>
+                             </Button>
+                             {/* Delete Button */}
+                             <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 hover:bg-destructive/10 h-8 w-8" onClick={() => openDeleteDialog(customer)} title="Delete">
+                                 <Trash2 className="h-4 w-4" />
+                                  <span className="sr-only">Delete</span>
+                             </Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -415,32 +440,39 @@ export default function CustomersPage() {
            )}
         </CardContent>
          {/* Optional: Add pagination controls if list becomes long */}
-         {/* <CardFooter className="p-4 border-t"> <PaginationComponent /> </CardFooter> */}
+         {customers.length > 10 && (
+            <CardFooter className="p-4 border-t justify-center text-sm text-muted-foreground">
+                {/* Placeholder for pagination */}
+                Displaying {customers.length} customers. {/* Add pagination component later */}
+            </CardFooter>
+          )}
       </Card>
 
 
       {/* Delete Confirmation Dialog */}
        <Dialog open={isDeleteDialogOpen} onOpenChange={(open) => open ? setIsDeleteDialogOpen(true) : closeDeleteDialog()}>
          <DialogContent
+             className="sm:max-w-md"
              onInteractOutside={(e) => { if (isDeleting) e.preventDefault(); }}
              onEscapeKeyDown={(e) => { if (isDeleting) e.preventDefault(); }}
          >
              <DialogHeader>
-                 <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-destructive"/> Confirm Deletion</DialogTitle>
-                 {/* Alert inside the dialog for emphasis */}
-                 <Alert variant="destructive" className="mt-4 border-0 bg-transparent p-0">
-                     <AlertDescription>
-                         This action will permanently delete the customer <strong className="text-foreground">"{customerToDelete?.name}"</strong>.
-                         This cannot be undone. Ensure the customer has no outstanding loans before deleting.
-                     </AlertDescription>
-                 </Alert>
+                 <DialogTitle className="flex items-center gap-2 text-lg"><AlertTriangle className="h-5 w-5 text-destructive"/> Confirm Deletion</DialogTitle>
              </DialogHeader>
+             <div className="py-4">
+                <p className="text-sm text-muted-foreground">
+                    Are you sure you want to permanently delete the customer <strong className="text-foreground">"{customerToDelete?.name}"</strong>?
+                </p>
+                <p className="text-sm text-destructive mt-2">
+                    This action cannot be undone. Ensure the customer has no outstanding loans before deleting.
+                </p>
+             </div>
              {/* Dialog Footer for Delete Confirmation */}
-             <DialogFooter className="mt-4">
+             <DialogFooter className="mt-2">
                 <Button variant="outline" onClick={closeDeleteDialog} disabled={isDeleting}>Cancel</Button>
                 <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
                     {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Delete Customer
+                    {isDeleting ? 'Deleting...' : 'Delete Customer'}
                 </Button>
              </DialogFooter>
          </DialogContent>
@@ -448,3 +480,5 @@ export default function CustomersPage() {
     </div>
   );
 }
+
+    

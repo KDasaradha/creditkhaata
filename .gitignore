@@ -70,7 +70,7 @@ web_modules/
 .yarn-integrity
 
 # dotenv environment variables file
-.env
+# .env
 .env*.local
 .env.development.local
 .env.test.local
@@ -82,8 +82,8 @@ web_modules/
 
 # Next.js build output
 # Removed as this is no longer a Next.js project
-#.next/
-#out/
+.next/
+out/
 
 # Nuxt.js build output
 .nuxt

@@ -1,8 +1,1 @@
-{
-  "/api/summary/route": "app/api/summary/route.js",
-  "/(auth)/register/page": "app/(auth)/register/page.js",
-  "/dashboard/page": "app/dashboard/page.js",
-  "/dashboard/customers/page": "app/dashboard/customers/page.js",
-  "/dashboard/loans/page": "app/dashboard/loans/page.js",
-  "/dashboard/summary/page": "app/dashboard/summary/page.js"
-}
+{}
