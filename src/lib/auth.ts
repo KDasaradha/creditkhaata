@@ -4,7 +4,7 @@
 import { jwtDecode } from 'jwt-decode';
 import Cookies from 'js-cookie'; // Import js-cookie for easier cookie management client-side
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 const TOKEN_KEY = 'credikhaata_token'; // Key for both localStorage and cookie
 const COOKIE_OPTIONS = {
     // secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
