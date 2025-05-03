@@ -1,553 +1,1137 @@
+"use client";
 
-'use client';
-
-import { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
-import { Separator } from '@/components/ui/separator';
-import { ArrowLeft, Loader2, AlertTriangle, CalendarIcon, Banknote, Info, CheckCircle2, Clock, Users, Phone, HomeIcon, IndianRupee, Percent, Repeat, Printer } from 'lucide-react'; // Added more icons
-import { getAuthHeaders } from '@/lib/auth';
-import { format, parseISO, differenceInDays, isBefore, isValid, startOfDay } from 'date-fns'; // Import necessary date-fns functions
-import Link from 'next/link';
-import { cn } from '@/lib/utils';
+import { useState, useEffect, useCallback } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardFooter,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  PlusCircle,
+  Edit,
+  Trash2,
+  AlertTriangle,
+  Loader2,
+  CalendarIcon,
+  Eye,
+  ListFilter,
+  Search,
+  FilePlus,
+  ListChecks,
+  IndianRupee,
+  Users,
+  Clock,
+  Repeat,
+  Percent,
+} from "lucide-react"; // Added more relevant icons
+import { getAuthHeaders } from "@/lib/auth";
+import { format, parseISO, isBefore, isValid } from "date-fns"; // Added isValid
+import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
+import Link from "next/link";
 
 // Use NEXT_PUBLIC_ prefix for client-side environment variables
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
-// Interfaces (ensure consistency with backend models)
 interface Customer {
   _id: string;
   name: string;
   phone: string;
-  address?: string;
 }
 
-interface Repayment {
-    _id: string;
-    amount: number;
-    date: string; // ISO string from backend
-    createdAt: string; // ISO string from backend
-}
-
+// Allow customer to be populated object or just string ID
 interface Loan {
   _id: string;
-  customer: Customer; // Assuming backend populates this fully
+  customer: Customer | string; // Can be populated or just ID string
   description: string;
   amount: number;
   balance: number;
-  issueDate: string; // ISO string
-  dueDate: string; // ISO string
-  frequency: 'bi-weekly' | 'monthly' | 'one-time';
+  issueDate: string; // ISO String
+  dueDate: string; // ISO String
+  frequency: "bi-weekly" | "monthly" | "one-time";
   interestRate: number;
   graceDays: number;
-  status: 'pending' | 'paid' | 'overdue';
-  repayments: Repayment[]; // Array of repayment objects
-  createdAt: string; // ISO string
-  updatedAt: string; // ISO string
+  status: "pending" | "paid" | "overdue";
+  createdAt: string; // ISO String
+  updatedAt: string; // ISO String
 }
 
-type LoanStatus = Loan['status'];
-
-// Repayment form data state
-interface RepaymentFormData {
-    amount: string | number; // Allow string during input
-    date: Date | undefined;
+// Form data structure
+interface LoanFormData {
+  customerId: string; // Always store ID in form
+  description: string;
+  amount: number | string; // Allow string during input
+  issueDate: Date | undefined;
+  dueDate: Date | undefined;
+  frequency: "bi-weekly" | "monthly" | "one-time";
+  interestRate: number | string; // Allow string during input
+  graceDays: number | string; // Allow string during input
 }
 
-export default function LoanDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const loanId = params.loanId as string; // Get loanId from URL params
+type LoanStatus = Loan["status"];
+type LoanFrequency = Loan["frequency"];
 
-  const [loan, setLoan] = useState<Loan | null>(null);
+export default function LoansPage() {
+  const [loans, setLoans] = useState<Loan[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [repaymentForm, setRepaymentForm] = useState<RepaymentFormData>({ amount: '', date: new Date() });
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
+  // Initialize form data with defaults
+  const [formData, setFormData] = useState<LoanFormData>({
+    customerId: "",
+    description: "",
+    amount: "",
+    issueDate: new Date(), // Default issue date to today
+    dueDate: undefined,
+    frequency: "monthly",
+    interestRate: 0,
+    graceDays: 0,
+  });
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [loanToDelete, setLoanToDelete] = useState<Loan | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const router = useRouter();
 
-  // Fetch loan details function
-  const fetchLoanDetails = useCallback(async () => {
-    if (!loanId || !API_URL) {
-        setError(!API_URL ? "API URL not configured." : "Loan ID is missing.");
-        setLoading(false);
-        return;
+  // Helper to safely get customer name
+  const getCustomerName = (
+    customerInput: string | Customer | undefined
+  ): string => {
+    if (!customerInput) return "Unknown Customer";
+    if (
+      typeof customerInput === "object" &&
+      customerInput !== null &&
+      "name" in customerInput
+    ) {
+      return customerInput.name;
+    }
+    // If it's a string ID, find the customer in the customers list
+    if (typeof customerInput === "string") {
+      const customer = customers.find((c) => c._id === customerInput);
+      return customer ? customer.name : "Loading..."; // Indicate loading if customer list isn't ready
+    }
+    return "Invalid Customer Data";
+  };
+
+  // Fetch both loans and customers
+  const fetchLoansAndCustomers = useCallback(async () => {
+    if (!API_URL) {
+      setError("API URL is not configured.");
+      setLoading(false);
+      return;
     }
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_URL}/loans/${loanId}`, {
+      // Fetch customers first for the dropdown
+      const customerResponse = await fetch(`${API_URL}/customers`, {
         headers: getAuthHeaders(),
       });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({message: 'Failed to parse error response'}));
-         if (response.status === 404) throw new Error('Loan not found.');
-        throw new Error(errorData.message || `Failed to fetch loan details (${response.status})`);
+      if (!customerResponse.ok) {
+        const errData = await customerResponse
+          .json()
+          .catch(() => ({ message: "Failed to load customers" }));
+        throw new Error(errData.message || "Failed to fetch customers");
       }
-      const data: Loan = await response.json();
+      const customerData: Customer[] = await customerResponse.json();
+      setCustomers(customerData);
 
-      // Validate date strings before parsing
-      if (!data.issueDate || !isValid(parseISO(data.issueDate))) {
-           console.warn("Invalid or missing issueDate from API:", data.issueDate);
-           // Handle potentially invalid date - maybe set to current date or show error?
+      // Then fetch loans
+      const loanResponse = await fetch(`${API_URL}/loans`, {
+        headers: getAuthHeaders(),
+      });
+      if (!loanResponse.ok) {
+        const errData = await loanResponse
+          .json()
+          .catch(() => ({ message: "Failed to load loans" }));
+        throw new Error(
+          errData.message || `Failed to fetch loans (${loanResponse.status})`
+        );
       }
-       if (!data.dueDate || !isValid(parseISO(data.dueDate))) {
-           console.warn("Invalid or missing dueDate from API:", data.dueDate);
-      }
-
-      setLoan(data);
-      // Optional UX: Pre-fill repayment amount if balance > 0
-       if (data && data.balance > 0) {
-          setRepaymentForm(prev => ({ ...prev, amount: '' })); // Clear amount, let user enter
-       }
+      const loanData: Loan[] = await loanResponse.json();
+      // Sort loans by due date, most recent first (or oldest first depending on preference)
+      loanData.sort(
+        (a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime()
+      );
+      setLoans(loanData);
     } catch (err: any) {
-      console.error("Fetch Loan Details Error:", err);
-      setError(err.message || 'An unknown error occurred.');
+      console.error("Fetch Loans/Customers Error:", err);
+      setError(err.message || "An unknown error occurred while loading data.");
     } finally {
       setLoading(false);
     }
-  }, [loanId]); // Dependency on loanId
+  }, []); // Empty dependency array, depends only on API_URL
 
-  // Fetch data on component mount or when loanId changes
   useEffect(() => {
-    fetchLoanDetails();
-  }, [fetchLoanDetails]);
+    if (typeof window !== "undefined" && window.location.hash === "#add") {
+      handleOpenForm();
+      window.history.replaceState(
+        null,
+        "",
+        window.location.pathname + window.location.search
+      );
+    }
+    fetchLoansAndCustomers();
+  }, [fetchLoansAndCustomers]); // fetchLoansAndCustomers is stable
 
-    // Handle input change for repayment amount
-    const handleRepaymentInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, value } = e.target;
-        setRepaymentForm(prev => ({ ...prev, [name]: value }));
-    };
+  // Reset form fields and errors
+  const resetForm = () => {
+    setEditingLoan(null);
+    setFormData({
+      customerId: "",
+      description: "",
+      amount: "",
+      issueDate: new Date(), // Reset issue date to today
+      dueDate: undefined,
+      frequency: "monthly",
+      interestRate: 0,
+      graceDays: 0,
+    });
+    setFormError(null);
+    setIsSubmitting(false); // Ensure submitting state is reset
+  };
 
-     // Handle date selection for repayment date
-     const handleRepaymentDateChange = (date: Date | undefined) => {
-        setRepaymentForm(prev => ({ ...prev, date: date }));
-    };
+  // Open the add/edit form dialog
+  const handleOpenForm = (loan: Loan | null = null) => {
+    resetForm(); // Reset before populating
+    if (loan) {
+      setEditingLoan(loan);
+      // Ensure dates are parsed correctly from ISO strings
+      const issueDate = loan.issueDate ? parseISO(loan.issueDate) : new Date();
+      const dueDate = loan.dueDate ? parseISO(loan.dueDate) : undefined;
 
-  // Handle submission of the repayment form
-  const handleRecordRepayment = async (e: React.FormEvent) => {
+      setFormData({
+        // Handle case where customer might be just an ID string
+        customerId:
+          typeof loan.customer === "string" ? loan.customer : loan.customer._id,
+        description: loan.description,
+        amount: loan.amount,
+        issueDate: isValid(issueDate) ? issueDate : new Date(), // Fallback if parsing fails
+        dueDate: isValid(dueDate) ? dueDate : undefined, // Fallback if parsing fails
+        frequency: loan.frequency,
+        interestRate: loan.interestRate,
+        graceDays: loan.graceDays,
+      });
+    } else {
+      // Ensure dates are reset for a new loan
+      setFormData((prev) => ({
+        ...prev,
+        issueDate: new Date(),
+        dueDate: undefined,
+      }));
+    }
+    setIsFormOpen(true);
+  };
+
+  // Close the add/edit form dialog
+  const handleCloseForm = () => {
+    if (isSubmitting) return; // Prevent closing during submission
+    setIsFormOpen(false);
+    setTimeout(resetForm, 300); // Delay reset for animation
+  };
+
+  // Handle input changes for text/number fields
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      // Allow empty strings for number inputs temporarily
+      [name]:
+        name === "amount" || name === "interestRate" || name === "graceDays"
+          ? value
+          : value,
+    }));
+  };
+
+  // Handle changes for Select components
+  const handleSelectChange = (name: keyof LoanFormData, value: string) => {
+    // Type assertion for frequency
+    if (name === "frequency") {
+      setFormData((prev) => ({ ...prev, [name]: value as LoanFrequency }));
+    } else {
+      setFormData((prev) => ({ ...prev, [name]: value }));
+    }
+  };
+
+  // Handle changes for Date picker components
+  const handleDateChange = (
+    name: "issueDate" | "dueDate",
+    date: Date | undefined
+  ) => {
+    setFormData((prev) => ({ ...prev, [name]: date }));
+  };
+
+  // Handle form submission (Add/Edit Loan)
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!loan || !API_URL) return; // Guard clause
-    setFormError(null); // Clear previous form errors
+    if (!API_URL) {
+      setFormError("API URL not configured.");
+      return;
+    }
+    setFormError(null);
     setIsSubmitting(true);
 
-    // --- Repayment Form Validation ---
-    const amountNum = parseFloat(String(repaymentForm.amount));
+    // --- Form Validation ---
+    if (
+      !formData.customerId ||
+      !formData.description ||
+      formData.amount === "" ||
+      !formData.dueDate
+    ) {
+      setFormError("Customer, Description, Amount, and Due Date are required.");
+      setIsSubmitting(false);
+      return;
+    }
+    const amountNum = parseFloat(String(formData.amount));
+    if (isNaN(amountNum) || amountNum <= 0) {
+      setFormError("Amount must be a positive number.");
+      setIsSubmitting(false);
+      return;
+    }
+    const interestRateNum = parseFloat(String(formData.interestRate));
+    if (isNaN(interestRateNum) || interestRateNum < 0) {
+      setFormError("Interest Rate must be a non-negative number.");
+      setIsSubmitting(false);
+      return;
+    }
+    const graceDaysNum = parseInt(String(formData.graceDays), 10);
+    if (
+      isNaN(graceDaysNum) ||
+      graceDaysNum < 0 ||
+      !Number.isInteger(graceDaysNum)
+    ) {
+      // Check if integer
+      setFormError("Grace Days must be a non-negative whole number.");
+      setIsSubmitting(false);
+      return;
+    }
+    // Ensure issueDate is set (should be by default)
+    if (!formData.issueDate) {
+      setFormError("Issue Date is required.");
+      setIsSubmitting(false);
+      return;
+    }
+    if (isBefore(formData.dueDate, formData.issueDate)) {
+      setFormError("Due Date cannot be before the Issue Date.");
+      setIsSubmitting(false);
+      return;
+    }
+    // --- End Validation ---
 
-     if (isNaN(amountNum) || amountNum <= 0) {
-         setFormError('Repayment amount must be a positive number.');
-         setIsSubmitting(false);
-         return;
-     }
-      if (!repaymentForm.date) {
-         setFormError('Repayment date is required.');
-         setIsSubmitting(false);
-         return;
-     }
-     // Ensure repayment amount doesn't exceed current balance (add small tolerance)
-      const tolerance = 0.01; // Allow for minor floating point differences
-      if (amountNum > loan.balance + tolerance) {
-         setFormError(`Repayment amount (₹${amountNum.toFixed(2)}) cannot exceed the current balance (${formatCurrency(loan.balance)}).`);
-         setIsSubmitting(false);
-         return;
-     }
-     // Ensure repayment date is not before the loan issue date
-     const issueDate = parseISO(loan.issueDate);
-     if (isValid(issueDate) && isBefore(repaymentForm.date, issueDate)) {
-            setFormError('Repayment date cannot be before the loan issue date.');
-            setIsSubmitting(false);
-            return;
-     }
-     // Ensure repayment date is not in the future (allow today)
-      if (isBefore(startOfDay(new Date()), startOfDay(repaymentForm.date))) {
-          setFormError('Repayment date cannot be in the future.');
-          setIsSubmitting(false);
-          return;
-      }
-     // --- End Validation ---
+    const url = editingLoan
+      ? `${API_URL}/loans/${editingLoan._id}`
+      : `${API_URL}/loans`;
+    const method = editingLoan ? "PUT" : "POST";
 
-    // Prepare payload for API
-    const payload = {
-      loanId: loan._id,
+    // Construct payload carefully
+    const payloadBase = {
+      customerId: formData.customerId,
+      description: formData.description,
       amount: amountNum,
-      date: repaymentForm.date.toISOString(), // Send date as ISO string
+      balance: amountNum, // Include balance equal to amount
+      issueDate: formData.issueDate?.toISOString(),
+      dueDate: formData.dueDate?.toISOString(),
+      frequency: formData.frequency,
+      interestRate: interestRateNum,
+      graceDays: graceDaysNum,
     };
 
+    // For PUT, only send fields that are editable according to backend logic
+    const payload = editingLoan
+      ? {
+          description: payloadBase.description,
+          dueDate: payloadBase.dueDate,
+          frequency: payloadBase.frequency,
+          interestRate: payloadBase.interestRate,
+          graceDays: payloadBase.graceDays,
+          // DO NOT SEND: customerId, amount, balance, issueDate if they are immutable
+        }
+      : payloadBase; // For POST, send everything
+
     try {
-      const response = await fetch(`${API_URL}/repayments`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      const response = await fetch(url, {
+        method: method,
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({message: 'Failed to parse error response'}));
-        throw new Error(errorData.message || 'Failed to record repayment.');
+        const errorData = await response
+          .json()
+          .catch(() => ({ message: "Failed to parse error response" }));
+        throw new Error(
+          errorData.message ||
+            `Failed to ${editingLoan ? "update" : "create"} loan (${
+              response.status
+            })`
+        );
       }
 
-      setRepaymentForm({ amount: '', date: new Date() }); // Reset form
-      await fetchLoanDetails(); // Refetch loan details to update balance, status, and repayment list
-
+      await fetchLoansAndCustomers(); // Refresh list
+      handleCloseForm(); // Close form on success
     } catch (err: any) {
-      console.error("Record Repayment Error:", err);
-      setFormError(err.message || 'An unknown error occurred while recording repayment.');
+      console.error("Submit Loan Error:", err);
+      setFormError(err.message || "An unknown error occurred.");
     } finally {
-      setIsSubmitting(false); // Re-enable form
+      setIsSubmitting(false);
     }
   };
 
-    // --- Helper Functions for Display ---
-    const getStatusBadgeVariant = (status: LoanStatus): "default" | "secondary" | "destructive" | "outline" => {
-        switch (status) {
-            case 'paid': return 'secondary';
-            case 'overdue': return 'destructive';
-            case 'pending': return 'default'; // Using primary theme color
-            default: return 'outline';
+  // Open delete confirmation dialog
+  const openDeleteDialog = (loan: Loan) => {
+    setLoanToDelete(loan);
+    setIsDeleteDialogOpen(true);
+  };
+
+  // Close delete confirmation dialog
+  const closeDeleteDialog = () => {
+    if (isDeleting) return;
+    setIsDeleteDialogOpen(false);
+    setTimeout(() => {
+      setLoanToDelete(null);
+    }, 300);
+  };
+
+  // Handle actual deletion
+  const handleDelete = async () => {
+    if (!loanToDelete || !API_URL) return;
+    setIsDeleting(true);
+    setError(null); // Clear main page error
+
+    try {
+      const response = await fetch(`${API_URL}/loans/${loanToDelete._id}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        const errorData = await response
+          .json()
+          .catch(() => ({ message: "Failed to parse error response" }));
+        // Handle specific constraint errors from backend
+        if (
+          response.status === 400 &&
+          errorData.message?.includes("repayment")
+        ) {
+          // Check for 'repayment'
+          setError(
+            `Cannot delete loan "${loanToDelete.description}": ${errorData.message}`
+          );
+        } else {
+          throw new Error(
+            errorData.message || `Failed to delete loan (${response.status})`
+          );
         }
-    };
-     const getStatusBadgeText = (status: LoanStatus): string => {
+        closeDeleteDialog();
+        return;
+      }
+
+      // Update state or refetch
+      setLoans((prev) => prev.filter((l) => l._id !== loanToDelete._id));
+      // await fetchLoansAndCustomers();
+      closeDeleteDialog(); // Close on success
+    } catch (err: any) {
+      console.error("Delete Loan Error:", err);
+      setError(`Delete failed: ${err.message}`); // Show error on main page
+      closeDeleteDialog(); // Close dialog even on error
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Helper function to get badge variant based on loan status
+  const getStatusBadgeVariant = (
+    status: LoanStatus
+  ): "default" | "secondary" | "destructive" | "outline" => {
+    switch (status) {
+      case "paid":
+        return "secondary"; // Greyish for paid
+      case "overdue":
+        return "destructive"; // Red for overdue
+      case "pending":
+        return "default"; // Primary color (or yellow/orange if defined) for pending
+      default:
+        return "outline"; // Fallback
+    }
+  };
+  // Helper function to get badge text
+  const getStatusBadgeText = (status: LoanStatus): string => {
+    switch (status) {
+      case "paid":
+        return "Paid";
+      case "overdue":
+        return "Overdue";
+      case "pending":
+        return "Pending";
+      default:
         return status.charAt(0).toUpperCase() + status.slice(1); // Capitalize
     }
-     const getStatusIcon = (status: LoanStatus) => {
-         switch (status) {
-            case 'paid': return <CheckCircle2 className="h-4 w-4 mr-1.5" />;
-            case 'overdue': return <AlertTriangle className="h-4 w-4 mr-1.5" />;
-            case 'pending': return <Clock className="h-4 w-4 mr-1.5" />;
-            default: return null;
-        }
-     };
+  };
 
-    // Calculate days overdue based on due date and grace period
-    const calculateDaysOverdue = (dueDateStr: string, graceDays: number): number => {
-        const dueDate = parseISO(dueDateStr);
-        if (!isValid(dueDate)) return 0; // Handle invalid date
+  // Navigate to the loan detail page
+  const navigateToLoanDetail = (loanId: string) => {
+    router.push(`/dashboard/loans/${loanId}`);
+  };
 
-        const today = startOfDay(new Date()); // Compare against start of today
-        const effectiveDueDate = addDays(startOfDay(dueDate), graceDays); // Add grace days
+  // Helper to format currency
+  const formatCurrency = (amount: number | null | undefined): string => {
+    if (amount === null || amount === undefined) return "₹ --.--";
+    return `₹${Number(amount).toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  };
 
-        // If today is after the effective due date
-        if (isBefore(effectiveDueDate, today)) {
-            return differenceInDays(today, effectiveDueDate);
-        }
-        return 0; // Not overdue yet
-    };
-
-    // Format currency
-    const formatCurrency = (amount: number | null | undefined): string => {
-      if (amount === null || amount === undefined) return '₹ --.--';
-      return `₹${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    };
-
-    const handlePrint = () => {
-       window.print();
-    }
-
-  // --- Render Logic ---
-
-  // Loading State
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center min-h-[calc(100vh-200px)] text-muted-foreground">
-        <Loader2 className="mr-3 h-6 w-6 animate-spin text-primary" />
-        <span className="text-lg">Loading loan details...</span>
-      </div>
-    );
-  }
-
-  // Error State
-  if (error) {
-    return (
-      <div className="container mx-auto py-6 px-4 md:px-6 space-y-4">
-         <Button variant="outline" size="sm" onClick={() => router.back()} className="print:hidden">
-             <ArrowLeft className="mr-2 h-4 w-4" /> Back
-         </Button>
-         <Alert variant="destructive">
-             <AlertTriangle className="h-4 w-4" />
-             <AlertTitle>Error Loading Loan</AlertTitle>
-             <AlertDescription>
-                 {error}
-                 {/* Add retry button for fetch errors */}
-                  {error.includes('fetch loan details') &&
-                     <Button variant="link" onClick={fetchLoanDetails} className="p-0 h-auto ml-2">Retry</Button>}
-             </AlertDescription>
-         </Alert>
-      </div>
-    );
-  }
-
-  // Loan Not Found State
-  if (!loan) {
-     return (
-        <div className="container mx-auto py-6 px-4 md:px-6 text-center space-y-4">
-             <Button variant="outline" size="sm" onClick={() => router.back()} className="print:hidden">
-                <ArrowLeft className="mr-2 h-4 w-4" /> Back to Loans
-             </Button>
-             <Card className="p-10 shadow-md rounded-lg border">
-                <AlertTriangle className="mx-auto h-12 w-12 text-muted-foreground mb-4"/>
-                 <p className="text-xl text-foreground font-semibold">Loan Not Found</p>
-                <p className="text-muted-foreground mt-2">The requested loan details could not be loaded or the loan does not exist.</p>
-             </Card>
-        </div>
-     );
-  }
-
-  // --- Calculated Values for Display ---
-    const daysOverdue = loan.status === 'overdue' ? calculateDaysOverdue(loan.dueDate, loan.graceDays) : 0;
-    const totalRepaid = loan.amount - loan.balance;
-    const issueDateParsed = parseISO(loan.issueDate);
-    const dueDateParsed = parseISO(loan.dueDate);
-
-
-  // --- Main Render ---
   return (
-    <div className="container mx-auto py-6 px-4 md:px-6 space-y-8 print:space-y-4">
-       {/* Header Section with Back Button and Print */}
-       <div className="flex justify-between items-center mb-6 print:hidden">
-         <Button variant="outline" size="sm" onClick={() => router.back()}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Loans List
-         </Button>
-         <Button variant="outline" size="sm" onClick={handlePrint}>
-             <Printer className="mr-2 h-4 w-4" /> Print / Save PDF
-         </Button>
-       </div>
+    <div className="container mx-auto py-6 px-4 md:px-6 space-y-8">
+      {/* Main Error Alert */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>
+            {error}
+            {/* Provide retry only for specific fetch errors */}
+            {(error.includes("fetch loans") ||
+              error.includes("fetch customers")) && (
+              <Button
+                variant="link"
+                size="sm"
+                onClick={fetchLoansAndCustomers}
+                className="p-0 h-auto ml-2"
+              >
+                Retry
+              </Button>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
 
-        {/* Print Header */}
-       <div className="hidden print:block mb-6 border-b pb-4">
-           <h1 className="text-xl font-bold">Loan Details - CrediKhaata</h1>
-           <p className="text-sm text-muted-foreground">Generated on: {format(new Date(), 'PPP p')}</p>
-       </div>
-
-       {/* Loan Header & Status Card */}
-        <Card className="shadow-md rounded-lg border border-border print:shadow-none print:border-0">
-            {/* Card Header */}
-            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b print:border-b-0 print:pb-2">
-                {/* Loan Title and Customer Info */}
-                <div>
-                    <CardTitle className="text-xl lg:text-2xl mb-1 font-semibold text-foreground">{loan.description}</CardTitle>
-                    <div className="text-sm text-muted-foreground space-y-1 mt-2">
-                        <div className="flex items-center gap-2">
-                            <Users className="h-4 w-4 flex-shrink-0 text-primary"/>
-                            <span className="font-medium">Customer:</span>
-                             <Link href={`/dashboard/customers?id=${loan.customer._id}`} className="text-primary hover:underline font-semibold">
-                                {loan.customer.name}
-                             </Link>
-                        </div>
-                        <div className="flex items-center gap-2"><Phone className="h-4 w-4 flex-shrink-0 text-primary"/> <span className="font-medium">Phone:</span> {loan.customer.phone}</div>
-                        {loan.customer.address && <div className="flex items-center gap-2"><HomeIcon className="h-4 w-4 flex-shrink-0 text-primary"/> <span className="font-medium">Address:</span> {loan.customer.address}</div>}
-                    </div>
-                </div>
-                {/* Loan Status Badge and Overdue Info */}
-                <div className="flex flex-col items-start sm:items-end gap-2 mt-2 sm:mt-0">
-                     <Badge variant={getStatusBadgeVariant(loan.status)} className="text-base px-4 py-1.5 rounded-full shadow-sm">
-                        {getStatusIcon(loan.status)}
-                        <span>{getStatusBadgeText(loan.status)}</span>
-                     </Badge>
-                     {loan.status === 'overdue' && daysOverdue > 0 && (
-                         <p className="text-sm text-destructive font-medium mt-1">({daysOverdue} day{daysOverdue !== 1 ? 's' : ''} overdue)</p>
-                     )}
-                      {loan.status === 'paid' && (
-                         <p className="text-sm text-green-600 font-medium mt-1">(Fully Repaid)</p>
-                     )}
-                </div>
-            </CardHeader>
-
-            {/* Loan Financial Summary Grid */}
-            <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-6 print:grid-cols-4">
-                 <div className="flex flex-col items-center text-center p-3 rounded-md bg-muted/40 border">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Original Amount</p>
-                    <p className="text-xl font-semibold flex items-center"> <IndianRupee className="h-4 w-4 mr-0.5"/> {loan.amount.toLocaleString('en-IN')}</p>
-                </div>
-                <div className="flex flex-col items-center text-center p-3 rounded-md bg-muted/40 border">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Total Repaid</p>
-                    <p className="text-xl font-semibold text-green-600 flex items-center"> <IndianRupee className="h-4 w-4 mr-0.5"/> {totalRepaid.toLocaleString('en-IN')}</p>
-                </div>
-                <div className="flex flex-col items-center text-center p-3 rounded-md bg-muted/40 border">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Current Balance</p>
-                    <p className={cn("text-xl font-bold flex items-center", loan.balance > 0 ? 'text-orange-600' : 'text-green-600')}>
-                       <IndianRupee className="h-4 w-4 mr-0.5"/> {loan.balance.toLocaleString('en-IN')}
+      {/* Main Card for Loan Management */}
+      <Card className="shadow-md rounded-lg overflow-hidden border border-border">
+        {/* Card Header with Title and Add Button */}
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 sm:p-6 bg-card border-b">
+          <div>
+            <CardTitle className="text-2xl font-bold flex items-center gap-2">
+              <ListChecks className="h-6 w-6 text-primary" /> Loan Management
+            </CardTitle>
+            <CardDescription className="text-muted-foreground mt-1">
+              Track credit sales, balances, and payment statuses.
+            </CardDescription>
+          </div>
+          {/* Add/Edit Loan Dialog Trigger and Content */}
+          <div className="flex gap-2 items-center">
+            {/* TODO: Add Filtering/Search */}
+            {/* <Input placeholder="Search loans..." className="max-w-xs hidden md:block" />
+                <Button variant="outline" size="icon"><ListFilter className="h-4 w-4" /><span className="sr-only">Filter</span></Button> */}
+            <Dialog
+              open={isFormOpen}
+              onOpenChange={(open) =>
+                open ? setIsFormOpen(true) : handleCloseForm()
+              }
+            >
+              <DialogTrigger asChild>
+                <Button
+                  onClick={() => handleOpenForm()}
+                  disabled={customers.length === 0 && !editingLoan}
+                >
+                  <FilePlus className="mr-2 h-4 w-4" /> Add Loan
+                </Button>
+              </DialogTrigger>
+              {/* Explain why button is disabled */}
+              {customers.length === 0 && !editingLoan && (
+                <p className="text-xs text-muted-foreground hidden sm:block">
+                  Add a customer first
+                </p>
+              )}
+              {/* Dialog Content */}
+              <DialogContent
+                className="sm:max-w-[560px]" // Slightly wider dialog
+                onInteractOutside={(e) => {
+                  if (isSubmitting) e.preventDefault();
+                }}
+                onEscapeKeyDown={(e) => {
+                  if (isSubmitting) e.preventDefault();
+                }}
+              >
+                <DialogHeader>
+                  <DialogTitle className="text-xl">
+                    {editingLoan ? "Edit Loan Details" : "Add New Loan"}
+                  </DialogTitle>
+                  {/* Reminder for editing limitations */}
+                  {editingLoan && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Note: Customer, Amount, and Issue Date cannot be changed
+                      after creation.
                     </p>
-                </div>
-                 <div className="flex flex-col items-center text-center p-3 rounded-md bg-muted/40 border">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Interest Rate</p>
-                    <p className="text-xl font-semibold flex items-center">
-                        <Percent className="h-4 w-4 mr-0.5"/> {loan.interestRate}% {loan.interestRate > 0 ? <span className="text-xs ml-1">(Annual)</span> : ''}
-                     </p>
-                </div>
-            </CardContent>
-
-            {/* Separator */}
-            <Separator className="my-4 print:hidden" />
-
-            {/* Loan Dates & Terms Grid */}
-            <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-0 pb-6 print:grid-cols-4 print:pb-4">
-                <div className="space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1"><CalendarIcon className="h-3 w-3"/>Issue Date</p>
-                    <p className="text-sm font-medium">{isValid(issueDateParsed) ? format(issueDateParsed, 'PPP') : 'Invalid Date'}</p>
-                </div>
-                <div className="space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1"><CalendarIcon className="h-3 w-3 text-destructive"/>Due Date</p>
-                    <p className="text-sm font-medium">{isValid(dueDateParsed) ? format(dueDateParsed, 'PPP') : 'Invalid Date'}</p>
-                </div>
-                 <div className="space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Repeat className="h-3 w-3"/>Frequency</p>
-                    <p className="text-sm font-medium capitalize">{loan.frequency.replace('-', ' ')}</p>
-                </div>
-                <div className="space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Clock className="h-3 w-3"/>Grace Period</p>
-                    <p className="text-sm font-medium">{loan.graceDays > 0 ? `${loan.graceDays} day${loan.graceDays !== 1 ? 's' : ''}` : 'None'}</p>
-                </div>
-            </CardContent>
-        </Card>
-
-
-        {/* Record Repayment Card (Only show if balance > 0) */}
-        {loan.balance > 0 && (
-            <Card className="shadow-md rounded-lg border border-border print:hidden">
-                <CardHeader>
-                    <CardTitle className="text-lg font-semibold">Record Repayment</CardTitle>
-                    <CardDescription>Log a payment received for this loan.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                     {/* Repayment Form */}
-                     <form onSubmit={handleRecordRepayment} className="grid md:grid-cols-3 gap-4 items-end">
-                         {/* Amount Input */}
-                         <div className="space-y-2">
-                             <Label htmlFor="amount">Amount Received <span className="text-destructive">*</span></Label>
-                             <div className="relative">
-                                <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                <Input
-                                     id="amount"
-                                     name="amount"
-                                     type="number"
-                                     min="0.01"
-                                     step="0.01"
-                                     max={loan.balance} // Set max to current balance
-                                     value={repaymentForm.amount}
-                                     onChange={handleRepaymentInputChange}
-                                     required
-                                     disabled={isSubmitting}
-                                     placeholder={`Max: ${formatCurrency(loan.balance)}`}
-                                     className="text-base font-semibold pl-10"
-                                 />
-                             </div>
-                         </div>
-                        {/* Date Picker */}
-                        <div className="space-y-2">
-                            <Label htmlFor="date">Repayment Date <span className="text-destructive">*</span></Label>
-                            <Popover>
-                                <PopoverTrigger asChild>
-                                    <Button
-                                        variant={"outline"}
-                                        className={cn("w-full justify-start text-left font-normal text-base", !repaymentForm.date && "text-muted-foreground")}
-                                        disabled={isSubmitting}
-                                    >
-                                        <CalendarIcon className="mr-2 h-4 w-4" />
-                                        {repaymentForm.date ? format(repaymentForm.date, "PPP") : <span>Pick date</span>}
-                                    </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0">
-                                    <Calendar
-                                        mode="single"
-                                        selected={repaymentForm.date}
-                                        onSelect={handleRepaymentDateChange}
-                                        initialFocus
-                                        // Disable dates before issue date and future dates
-                                         disabled={(date) =>
-                                                (isValid(issueDateParsed) && isBefore(date, issueDateParsed)) ||
-                                                isBefore(startOfDay(new Date()), startOfDay(date))
-                                            }
-                                    />
-                                </PopoverContent>
-                            </Popover>
-                        </div>
-                        {/* Submit Button */}
-                        <Button type="submit" disabled={isSubmitting || !repaymentForm.amount || !repaymentForm.date} className="w-full md:w-auto h-10 text-base">
-                             {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Banknote className="mr-2 h-4 w-4" /> }
-                             {isSubmitting ? 'Recording...' : 'Record Payment'}
-                         </Button>
-                     </form>
-                     {/* Repayment Form Error */}
-                      {formError && (
-                        <Alert variant="destructive" className="mt-4">
-                            <AlertTriangle className="h-4 w-4" />
-                            <AlertTitle>Repayment Error</AlertTitle>
-                            <AlertDescription>{formError}</AlertDescription>
-                        </Alert>
+                  )}
+                </DialogHeader>
+                {/* Form inside Dialog */}
+                <form
+                  onSubmit={handleSubmit}
+                  className="space-y-5 pt-4 max-h-[70vh] overflow-y-auto pr-3"
+                >
+                  {/* Customer Selection */}
+                  <div className="space-y-2">
+                    <Label htmlFor="customerId">
+                      Customer <span className="text-destructive">*</span>
+                    </Label>
+                    <Select
+                      value={formData.customerId}
+                      onValueChange={(value) =>
+                        handleSelectChange("customerId", value)
+                      }
+                      required
+                      // Disable customer selection when editing or if no customers exist
+                      disabled={
+                        isSubmitting || !!editingLoan || customers.length === 0
+                      }
+                    >
+                      <SelectTrigger className="text-base">
+                        <SelectValue
+                          placeholder={
+                            customers.length === 0
+                              ? "No customers available"
+                              : "Select a customer"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {customers.length === 0 && (
+                          <div className="p-4 text-sm text-muted-foreground text-center">
+                            No customers found.{" "}
+                            <Link
+                              href="/dashboard/customers#add"
+                              className="text-primary underline"
+                            >
+                              Add one first
+                            </Link>
+                            .
+                          </div>
+                        )}
+                        {customers.map((customer) => (
+                          <SelectItem
+                            key={customer._id}
+                            value={customer._id}
+                            className="text-base"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Users className="h-4 w-4 text-muted-foreground" />
+                              <span>
+                                {customer.name}{" "}
+                                <span className="text-muted-foreground">
+                                  ({customer.phone})
+                                </span>
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {customers.length === 0 && !editingLoan && (
+                      <p className="text-xs text-destructive">
+                        You need to{" "}
+                        <Link
+                          href="/dashboard/customers#add"
+                          className="text-primary underline"
+                        >
+                          add a customer
+                        </Link>{" "}
+                        before creating a loan.
+                      </p>
                     )}
-                </CardContent>
-            </Card>
-        )}
+                  </div>
 
-       {/* Repayment History Card */}
-      <Card className="shadow-md rounded-lg border border-border print:shadow-none print:border">
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold">Repayment History</CardTitle>
-           <CardDescription>List of payments recorded for this loan.</CardDescription>
+                  {/* Description */}
+                  <div className="space-y-2">
+                    <Label htmlFor="description">
+                      Description <span className="text-destructive">*</span>
+                    </Label>
+                    <Textarea
+                      id="description"
+                      name="description"
+                      value={formData.description}
+                      onChange={handleInputChange}
+                      required
+                      disabled={isSubmitting}
+                      placeholder="e.g., Groceries, Repair service, Advance"
+                      className="text-base"
+                      rows={2}
+                    />
+                  </div>
+
+                  {/* Amount & Frequency */}
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Amount (Disabled if editing) */}
+                    <div className="space-y-2">
+                      <Label htmlFor="amount">
+                        Amount <span className="text-destructive">*</span>
+                      </Label>
+                      <div className="relative">
+                        <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          id="amount"
+                          name="amount"
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={formData.amount}
+                          onChange={handleInputChange}
+                          required
+                          disabled={isSubmitting || !!editingLoan}
+                          placeholder="e.g., 500"
+                          className="pl-10 text-base font-semibold"
+                        />
+                      </div>
+                    </div>
+                    {/* Frequency */}
+                    <div className="space-y-2">
+                      <Label htmlFor="frequency">Repayment Frequency</Label>
+                      <Select
+                        value={formData.frequency}
+                        onValueChange={(value: LoanFrequency) =>
+                          handleSelectChange("frequency", value)
+                        }
+                        required
+                        disabled={isSubmitting}
+                      >
+                        <SelectTrigger className="text-base">
+                          <Repeat className="mr-2 h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          <SelectValue placeholder="Select frequency" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="one-time">One-time</SelectItem>
+                          <SelectItem value="bi-weekly">Bi-Weekly</SelectItem>
+                          <SelectItem value="monthly">Monthly</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* Issue Date & Due Date */}
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Issue Date (Disabled if editing) */}
+                    <div className="space-y-2">
+                      <Label htmlFor="issueDate">
+                        Issue Date <span className="text-destructive">*</span>
+                      </Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant={"outline"}
+                            className={cn(
+                              "w-full justify-start text-left font-normal text-base",
+                              !formData.issueDate && "text-muted-foreground"
+                            )}
+                            // Disable issue date picker when editing
+                            disabled={isSubmitting || !!editingLoan}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {formData.issueDate ? (
+                              format(formData.issueDate, "PPP")
+                            ) : (
+                              <span>Pick issue date</span>
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        {!editingLoan && ( // Only show calendar if NOT editing
+                          <PopoverContent className="w-auto p-0">
+                            <Calendar
+                              mode="single"
+                              selected={formData.issueDate}
+                              onSelect={(date) =>
+                                handleDateChange("issueDate", date)
+                              }
+                              initialFocus
+                              disabled={isSubmitting || !!editingLoan}
+                            />
+                          </PopoverContent>
+                        )}
+                      </Popover>
+                    </div>
+
+                    {/* Due Date */}
+                    <div className="space-y-2">
+                      <Label htmlFor="dueDate">
+                        Due Date <span className="text-destructive">*</span>
+                      </Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant={"outline"}
+                            className={cn(
+                              "w-full justify-start text-left font-normal text-base",
+                              !formData.dueDate && "text-muted-foreground"
+                            )}
+                            disabled={isSubmitting}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {formData.dueDate ? (
+                              format(formData.dueDate, "PPP")
+                            ) : (
+                              <span>Pick due date</span>
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                          <Calendar
+                            mode="single"
+                            selected={formData.dueDate}
+                            onSelect={(date) =>
+                              handleDateChange("dueDate", date)
+                            }
+                            initialFocus
+                            // Disable dates before the issue date
+                            disabled={(date) =>
+                              (!!formData.issueDate &&
+                                isBefore(date, formData.issueDate)) ||
+                              isSubmitting
+                            }
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </div>
+
+                  {/* Interest Rate & Grace Days */}
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Interest Rate */}
+                    <div className="space-y-2">
+                      <Label htmlFor="interestRate">Interest Rate (%)</Label>
+                      <div className="relative">
+                        <Percent className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          id="interestRate"
+                          name="interestRate"
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={formData.interestRate}
+                          onChange={handleInputChange}
+                          disabled={isSubmitting}
+                          placeholder="e.g., 5"
+                          className="pl-10 text-base"
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Optional: Annual interest rate.
+                      </p>
+                    </div>
+                    {/* Grace Days */}
+                    <div className="space-y-2">
+                      <Label htmlFor="graceDays">Grace Days</Label>
+                      <div className="relative">
+                        <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          id="graceDays"
+                          name="graceDays"
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={formData.graceDays}
+                          onChange={handleInputChange}
+                          disabled={isSubmitting}
+                          placeholder="e.g., 3"
+                          className="pl-10 text-base"
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Optional: Days before marking overdue.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Form Error Alert */}
+                  {formError && (
+                    <Alert variant="destructive" className="mt-4">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTitle>Error</AlertTitle>
+                      <AlertDescription>{formError}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  {/* Dialog Footer */}
+                  <DialogFooter className="pt-5 sticky bottom-0 bg-background py-4 border-t">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleCloseForm}
+                      disabled={isSubmitting}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      // Disable submit if adding and no customers are available
+                      disabled={
+                        isSubmitting || (customers.length === 0 && !editingLoan)
+                      }
+                    >
+                      {isSubmitting && (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      )}
+                      {editingLoan ? "Save Changes" : "Create Loan"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
         </CardHeader>
+        {/* Card Content with Table */}
         <CardContent className="p-0">
-          {loan.repayments.length === 0 ? (
-            // Empty state for repayments
-            <p className="text-muted-foreground text-center py-10 px-6 bg-muted/30">No repayments recorded yet.</p>
+          {loading ? (
+            <div className="flex justify-center items-center py-20 text-muted-foreground">
+              <Loader2 className="mr-2 h-5 w-5 animate-spin text-primary" />
+              <span>Loading loans...</span>
+            </div>
+          ) : loans.length === 0 ? (
+            // Empty State
+            <div className="text-center py-20 px-6 bg-muted/30">
+              <ListChecks className="mx-auto h-16 w-16 text-muted-foreground/40 mb-5" />
+              <p className="text-xl font-semibold text-foreground mb-2">
+                No Loans Found
+              </p>
+              <p className="text-muted-foreground text-sm mb-6 max-w-xs mx-auto">
+                You haven't recorded any loans yet. Add your first loan to start
+                tracking.
+              </p>
+              <Button
+                onClick={() => handleOpenForm()}
+                disabled={customers.length === 0}
+              >
+                <FilePlus className="mr-2 h-4 w-4" /> Add First Loan
+              </Button>
+              {customers.length === 0 && (
+                <p className="text-xs text-destructive mt-2">
+                  Add a customer first!
+                </p>
+              )}
+            </div>
           ) : (
-              // Repayments Table
+            // Loans Table
             <div className="overflow-x-auto">
-                <Table>
+              <Table>
                 <TableHeader>
-                    <TableRow>
-                    <TableHead className="pl-6">Payment Date</TableHead>
-                    <TableHead className="text-right pr-6">Amount Paid</TableHead>
-                    {/* <TableHead className="hidden md:table-cell text-right">Recorded On</TableHead> */}
-                    {/* Add actions column if needed (e.g., delete repayment) */}
-                    {/* <TableHead className="text-right print:hidden">Actions</TableHead> */}
-                    </TableRow>
+                  <TableRow>
+                    <TableHead className="pl-6 w-[25%]">
+                      <Users className="inline-block h-4 w-4 mr-1" />
+                      Customer
+                    </TableHead>
+                    <TableHead className="hidden md:table-cell w-[25%]">
+                      Description
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <IndianRupee className="inline-block h-4 w-4 mr-1" />
+                      Amount
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <IndianRupee className="inline-block h-4 w-4 mr-1" />
+                      Balance
+                    </TableHead>
+                    {/* <TableHead className="hidden lg:table-cell text-center">Issued</TableHead> */}
+                    <TableHead className="text-center">
+                      <CalendarIcon className="inline-block h-4 w-4 mr-1" />
+                      Due
+                    </TableHead>
+                    <TableHead className="text-center">Status</TableHead>
+                    {/* Sticky Actions Header */}
+                    <TableHead className="text-right sticky right-0 bg-card z-10 px-4">
+                      Actions
+                    </TableHead>
+                  </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {loan.repayments
-                        // Sort should be handled by backend population or here if needed
-                        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) // Ensure descending sort by repayment date
-                        .map((repayment) => {
-                            const repaymentDateParsed = parseISO(repayment.date);
-                            // const recordedDateParsed = parseISO(repayment.createdAt);
-                            return (
-                                <TableRow key={repayment._id} className="hover:bg-muted/50">
-                                    <TableCell className="pl-6">{isValid(repaymentDateParsed) ? format(repaymentDateParsed, 'PPP') : 'Invalid Date'}</TableCell>
-                                    <TableCell className="text-right font-medium text-green-600 pr-6">{formatCurrency(repayment.amount)}</TableCell>
-                                    {/* <TableCell className="hidden md:table-cell text-right text-muted-foreground text-sm">
-                                        {isValid(recordedDateParsed) ? format(recordedDateParsed, 'dd MMM yy, hh:mm a') : 'N/A'}
-                                    </TableCell> */}
-                                    {/* Repayment Action Cell (Example - Add confirmation dialog!) */}
-                                    {/* <TableCell className="text-right print:hidden">
-                                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 hover:bg-destructive/10 h-8 w-8" title="Delete Repayment (Caution!)">
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                    </TableCell> */}
-                                </TableRow>
-                            );
-                        })}
+                  {loans.map((loan) => (
+                    <TableRow
+                      key={loan._id}
+                      className="group hover:bg-muted/50"
+                    >
+                      <TableCell className="font-medium pl-6">
+                        {getCustomerName(loan.customer)}
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell max-w-[200px] truncate text-muted-foreground">
+                        {loan.description}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(loan.amount)}
+                      </TableCell>
+                      <TableCell
+                        className={cn(
+                          "text-right font-semibold",
+                          Number(loan.balance) > 0
+                            ? "text-orange-600"
+                            : "text-green-600"
+                        )}
+                      >
+                        {formatCurrency(loan.balance)}
+                      </TableCell>
+                      {/* <TableCell className="hidden lg:table-cell text-center text-sm text-muted-foreground">{format(parseISO(loan.issueDate), 'dd MMM yy')}</TableCell> */}
+                      <TableCell className="text-center text-sm">
+                        {format(parseISO(loan.dueDate), "dd MMM yy")}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge
+                          variant={getStatusBadgeVariant(loan.status)}
+                          className="text-xs px-2 py-0.5"
+                        >
+                          {getStatusBadgeText(loan.status)}
+                        </Badge>
+                      </TableCell>
+                      {/* Sticky Actions Cell */}
+                      <TableCell className="text-right space-x-0.5 sticky right-0 bg-card group-hover:bg-muted/50 transition-colors z-10 px-4">
+                        {/* View Details Button */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => navigateToLoanDetail(loan._id)}
+                          title="View Details"
+                          className="hover:text-primary h-8 w-8"
+                        >
+                          <Eye className="h-4 w-4" />
+                          <span className="sr-only">View Details</span>
+                        </Button>
+                        {/* Edit Button */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleOpenForm(loan)}
+                          title="Edit"
+                          className="hover:text-primary h-8 w-8"
+                        >
+                          <Edit className="h-4 w-4" />
+                          <span className="sr-only">Edit</span>
+                        </Button>
+                        {/* Delete Button */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive hover:text-destructive/80 hover:bg-destructive/10 h-8 w-8"
+                          onClick={() => openDeleteDialog(loan)}
+                          title="Delete"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          <span className="sr-only">Delete</span>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
-                </Table>
+              </Table>
             </div>
           )}
         </CardContent>
-         {/* Footer showing total repaid */}
-         {loan.repayments.length > 0 && (
-             <CardFooter className="pt-4 pb-6 border-t justify-end pr-6 bg-muted/30">
-                <p className="text-sm text-muted-foreground">
-                    Total Repaid: <span className="font-semibold text-lg text-green-600">{formatCurrency(totalRepaid)}</span>
-                </p>
-             </CardFooter>
-         )}
+        {/* Optional: Add pagination if list is long */}
+        {loans.length > 10 && (
+          <CardFooter className="p-4 border-t justify-center text-sm text-muted-foreground">
+            Displaying {loans.length} loans.{" "}
+            {/* Add pagination component later */}
+          </CardFooter>
+        )}
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={isDeleteDialogOpen}
+        onOpenChange={(open) =>
+          open ? setIsDeleteDialogOpen(true) : closeDeleteDialog()
+        }
+      >
+        <DialogContent
+          className="sm:max-w-md"
+          onInteractOutside={(e) => {
+            if (isDeleting) e.preventDefault();
+          }}
+          onEscapeKeyDown={(e) => {
+            if (isDeleting) e.preventDefault();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <AlertTriangle className="h-5 w-5 text-destructive" /> Confirm
+              Loan Deletion
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground">
+              Are you sure you want to permanently delete the loan{" "}
+              <strong className="text-foreground">
+                "{loanToDelete?.description}"
+              </strong>{" "}
+              for{" "}
+              <strong className="text-foreground">
+                "{getCustomerName(loanToDelete?.customer)}"
+              </strong>
+              ?
+            </p>
+            <p className="text-sm text-destructive mt-2">
+              This action cannot be undone. Ensure this loan has no associated
+              repayments before proceeding.
+            </p>
+          </div>
+          <DialogFooter className="mt-2">
+            <Button
+              variant="outline"
+              onClick={closeDeleteDialog}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isDeleting ? "Deleting..." : "Delete Loan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
-
-    
