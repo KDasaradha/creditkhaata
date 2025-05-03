@@ -1,0 +1,132 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 98%; /* Light Grey */
+    --foreground: 222.2 47.4% 11.2%; /* Dark Blueish */
+
+    --card: 0 0% 100%; /* White */
+    --card-foreground: 222.2 47.4% 11.2%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 47.4% 11.2%;
+
+    --primary: 210 40% 20%; /* Dark Blue/Greenish - Adjusted for better contrast/appeal */
+    --primary-foreground: 0 0% 98%; /* Light Grey for text on primary */
+
+    --secondary: 215 30% 35%; /* Slightly lighter blue/grey for secondary elements */
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    --accent: 43 74% 49%; /* Gold - #FFD700 equivalent HSL */
+    --accent-foreground: 222.2 47.4% 11.2%; /* Dark text on gold */
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 215 30% 35%; /* Ring color matching secondary */
+
+    --radius: 0.5rem; /* Slightly more rounded corners */
+  }
+
+  .dark {
+    /* Define dark mode colors if needed later, matching the aesthetic */
+    --background: 222.2 47.4% 11.2%;
+    --foreground: 0 0% 98%;
+
+    --card: 220 40% 15%; /* Darker card background */
+    --card-foreground: 0 0% 98%;
+
+    --popover: 220 40% 15%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 210 40% 50%; /* Brighter primary for dark mode */
+    --primary-foreground: 0 0% 98%;
+
+    --secondary: 215 30% 25%; /* Darker secondary */
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 215 30% 20%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 43 74% 55%; /* Slightly brighter gold */
+    --accent-foreground: 222.2 47.4% 11.2%;
+
+    --destructive: 0 72% 51%; /* Slightly adjusted destructive */
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 215 30% 25%;
+    --input: 215 30% 25%;
+    --ring: 210 40% 50%; /* Ring color matching primary */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    /* Apply drop shadows for a professional feel */
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+
+  /* Add rounded corners and shadows to specific components if needed */
+   .card, .dialog-content, .popover-content, .button, .input, .textarea, .select-trigger {
+      @apply rounded-[var(--radius)];
+   }
+
+   /* Adding subtle shadows to cards and dialogs */
+   .card, .dialog-content, .popover-content {
+       @apply shadow-md;
+   }
+   .button:not([variant="ghost"]):not([variant="link"]) {
+        @apply shadow-sm;
+   }
+
+
+}
+
+/* Ensure components look aesthetically pleasing and functional */
+.button {
+  @apply transition-colors duration-200;
+}
+
+.input, .textarea, .select-trigger {
+  @apply transition-colors duration-200 focus:ring-2 focus:ring-ring focus:ring-offset-2;
+}
+
+/* Style scrollbars for a cleaner look */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--background) / 0.5);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.5);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+  background-clip: content-box;
+
+}
+
+/* Improve focus visibility */
+*:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+}

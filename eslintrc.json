@@ -1,0 +1,19 @@
+{
+  "env": {
+    "commonjs": true,
+    "es2021": true,
+    "node": true
+  },
+  "extends": "eslint:recommended",
+  "parserOptions": {
+    "ecmaVersion": 12
+  },
+  "rules": {
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+    "no-console": "off", // Allow console logs for now
+    "indent": ["warn", 2], // Enforce 2-space indentation
+    "linebreak-style": ["warn", "unix"], // Enforce Unix line endings
+    "quotes": ["warn", "single"], // Prefer single quotes
+    "semi": ["warn", "always"] // Require semicolons
+  }
+}
