@@ -1,14 +1,34 @@
+"use client";
 
-'use client';
-
-import { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Loader2, AlertTriangle, CircleDollarSign, PiggyBank, Clock, Users, ListChecks, PlusCircle, FileText, TrendingUp, TrendingDown, ArrowRight } from 'lucide-react'; // Added trend icons, ArrowRight
-import { getAuthHeaders } from '@/lib/auth';
-import { cn } from '@/lib/utils';
+import { useState, useEffect, useCallback } from "react";
+import { format, parseISO } from "date-fns";
+import Link from "next/link";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  Loader2,
+  AlertTriangle,
+  CircleDollarSign,
+  PiggyBank,
+  Clock,
+  Users,
+  ListChecks,
+  PlusCircle,
+  FileText,
+  TrendingUp,
+  TrendingDown,
+  ArrowRight,
+  BellRing,
+} from "lucide-react"; // Added BellRing
+import { getAuthHeaders } from "@/lib/auth";
+import { cn } from "@/lib/utils";
 
 // Use NEXT_PUBLIC_ prefix for client-side environment variables
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -25,85 +45,173 @@ interface ShopkeeperSummary {
   activeLoanCount: number;
 }
 
+// Interface for minimal overdue loan data for the dashboard snippet
+interface OverdueLoanSnippet {
+  _id: string;
+  customer: {
+    // Assuming customer is populated with at least name
+    _id: string;
+    name: string;
+  };
+  description: string;
+  balance: number;
+  dueDate: string; // ISO String
+}
+
 export default function DashboardPage() {
   const [summary, setSummary] = useState<ShopkeeperSummary | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [overdueLoans, setOverdueLoans] = useState<OverdueLoanSnippet[]>([]); // State for overdue loans snippet
+  const [loadingSummary, setLoadingSummary] = useState(true);
+  const [loadingOverdue, setLoadingOverdue] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Fetch summary data function
   const fetchSummary = useCallback(async () => {
-     if (!API_URL) {
-         setError("API URL is not configured. Please check environment variables.");
-         setLoading(false);
-         return;
-     }
-    setLoading(true);
-    setError(null);
+    if (!API_URL) {
+      setError(
+        "API URL is not configured. Please check environment variables."
+      );
+      setLoadingSummary(false);
+      return;
+    }
+    setLoadingSummary(true);
+    setError(null); // Clear previous errors
     try {
       const response = await fetch(`${API_URL}/summary`, {
         headers: getAuthHeaders(), // Include auth token
       });
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({message: 'Failed to parse error response'}));
-        throw new Error(errorData.message || `Failed to fetch summary (${response.status})`);
+        const errorData = await response
+          .json()
+          .catch(() => ({ message: "Failed to parse summary error response" }));
+        throw new Error(
+          errorData.message || `Failed to fetch summary (${response.status})`
+        );
       }
       const data: ShopkeeperSummary = await response.json();
       setSummary(data);
     } catch (err: any) {
       console.error("Fetch Summary Error:", err);
-      setError(err.message || 'An unknown error occurred while fetching the summary.');
+      // Set error only if it's not already set by overdue fetch
+      if (!error)
+        setError(
+          err.message || "An unknown error occurred while fetching the summary."
+        );
     } finally {
-      setLoading(false);
+      setLoadingSummary(false);
     }
-  }, []); // Empty dependency array, relies only on API_URL
+  }, [error]); // Add error to dependency array to avoid overwriting
 
-  // Fetch summary on component mount
+  // Fetch overdue loans snippet function
+  const fetchOverdueLoansSnippet = useCallback(async () => {
+    if (!API_URL) {
+      setError("API URL is not configured.");
+      setLoadingOverdue(false);
+      return;
+    }
+    setLoadingOverdue(true);
+    // setError(null); // Don't clear error here, let summary fetch handle it initially
+    try {
+      // Fetch only a few overdue loans, sorted by due date (oldest first)
+      const response = await fetch(
+        `${API_URL}/loans/overdue?limit=5&sort=dueDate`,
+        {
+          // Example: limit to 5, sort by due date
+          headers: getAuthHeaders(),
+        }
+      );
+      if (!response.ok) {
+        const errorData = await response
+          .json()
+          .catch(() => ({
+            message: "Failed to parse overdue loans error response",
+          }));
+        throw new Error(
+          errorData.message ||
+            `Failed to fetch overdue loans snippet (${response.status})`
+        );
+      }
+      const data: OverdueLoanSnippet[] = await response.json();
+      setOverdueLoans(data);
+    } catch (err: any) {
+      console.error("Fetch Overdue Loans Snippet Error:", err);
+      // Set error only if it's not already set by summary fetch
+      if (!error)
+        setError(
+          err.message ||
+            "An unknown error occurred while fetching overdue loans."
+        );
+    } finally {
+      setLoadingOverdue(false);
+    }
+  }, [error]); // Add error to dependency array
+
+  // Fetch data on component mount
   useEffect(() => {
     fetchSummary();
-  }, [fetchSummary]); // fetchSummary is stable
+    fetchOverdueLoansSnippet();
+  }, [fetchSummary, fetchOverdueLoansSnippet]); // fetch functions are stable due to useCallback
 
   // Helper to format currency
   const formatCurrency = (amount: number | null | undefined): string => {
-    if (amount === null || amount === undefined) return '₹ --.--'; // More distinct placeholder
-    return `₹${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; // Use localeString for Indian format
+    if (amount === null || amount === undefined) return "₹ --.--"; // More distinct placeholder
+    return `₹${Number(amount).toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`; // Use localeString for Indian format
   };
+
+  const isLoading = loadingSummary || loadingOverdue;
 
   return (
     <div className="container mx-auto py-6 px-4 md:px-6 space-y-8">
       {/* Dashboard Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">Welcome back! Here's a quick overview of your business.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">
+            Dashboard
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Welcome back! Here's a quick overview of your business.
+          </p>
         </div>
-         {/* Quick Action Buttons */}
+        {/* Quick Action Buttons */}
         <div className="flex gap-2 flex-wrap">
-           {/* Link to add customer page with #add hash */}
-           <Link href="/dashboard/customers#add" passHref>
-             <Button>
-                 <Users className="mr-2 h-4 w-4" /> Add Customer
-             </Button>
-           </Link>
-           {/* Link to add loan page with #add hash */}
-           <Link href="/dashboard/loans#add" passHref>
-             <Button variant="secondary">
-                 <PlusCircle className="mr-2 h-4 w-4" /> Add Loan
-             </Button>
-           </Link>
+          <Link href="/dashboard/customers#add" passHref>
+            <Button>
+              {" "}
+              <Users className="mr-2 h-4 w-4" /> Add Customer{" "}
+            </Button>
+          </Link>
+          <Link href="/dashboard/loans#add" passHref>
+            <Button variant="secondary">
+              {" "}
+              <PlusCircle className="mr-2 h-4 w-4" /> Add Loan{" "}
+            </Button>
+          </Link>
         </div>
       </div>
 
-      {/* Error Alert */}
-       {error && !loading && (
-           <Alert variant="destructive">
-               <AlertTriangle className="h-4 w-4" />
-               <AlertTitle>Error Fetching Summary</AlertTitle>
-               <AlertDescription>
-                   {error}
-                   <Button variant="link" onClick={fetchSummary} className="p-0 h-auto ml-2">Retry</Button>
-               </AlertDescription>
-           </Alert>
-       )}
+      {/* Error Alert - Shows if either fetch fails */}
+      {error && !isLoading && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Error Loading Dashboard</AlertTitle>
+          <AlertDescription>
+            {error}
+            <Button
+              variant="link"
+              onClick={() => {
+                fetchSummary();
+                fetchOverdueLoansSnippet();
+              }}
+              className="p-0 h-auto ml-2"
+            >
+              Retry All
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Summary Cards Section */}
       <Card className="border border-border shadow-sm rounded-lg">
@@ -112,144 +220,213 @@ export default function DashboardPage() {
           <CardDescription>Key metrics at a glance.</CardDescription>
         </CardHeader>
         <CardContent className="pt-6">
-            {/* Loading State */}
-            {loading && (
-                 <div className="flex justify-center items-center py-16 text-muted-foreground">
-                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                    <span className="ml-3 text-lg">Loading summary...</span>
-                </div>
-            )}
-            {/* Summary Data Grid */}
-            {summary && !loading && !error && (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                {/* Outstanding Balance Card */}
-                 <Card className="group hover:shadow-lg transition-shadow border border-border rounded-lg overflow-hidden">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-muted/30">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">Outstanding Balance</CardTitle>
-                         <ListChecks className="h-5 w-5 text-orange-500 group-hover:scale-110 transition-transform" />
-                    </CardHeader>
-                    <CardContent className="pt-4">
-                        <div className="text-3xl font-bold text-orange-600">{formatCurrency(summary.totalOutstanding)}</div>
-                        <p className="text-xs text-muted-foreground mt-1">{summary.activeLoanCount ?? '--'} active loan(s)</p>
-                    </CardContent>
-                </Card>
-
-                 {/* Overdue Amount Card */}
-                 <Card className="group hover:shadow-lg transition-shadow border border-destructive/60 rounded-lg overflow-hidden">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-destructive/10">
-                        <CardTitle className="text-sm font-medium text-destructive/90">Overdue Amount</CardTitle>
-                        <AlertTriangle className="h-5 w-5 text-destructive group-hover:scale-110 transition-transform" />
-                    </CardHeader>
-                    <CardContent className="pt-4">
-                        <div className="text-3xl font-bold text-destructive">{formatCurrency(summary.totalOverdueAmount)}</div>
-                        <p className="text-xs text-muted-foreground mt-1">{summary.overdueLoanCount ?? '--'} overdue loan(s)</p>
-                    </CardContent>
-                </Card>
-
-                 {/* Total Collected Card */}
-                 <Card className="group hover:shadow-lg transition-shadow border border-border rounded-lg overflow-hidden">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-muted/30">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">Total Collected</CardTitle>
-                        <PiggyBank className="h-5 w-5 text-green-600 group-hover:scale-110 transition-transform" />
-                    </CardHeader>
-                    <CardContent className="pt-4">
-                        <div className="text-3xl font-bold text-green-600">{formatCurrency(summary.totalCollected)}</div>
-                        <p className="text-xs text-muted-foreground mt-1">Total amount repaid</p>
-                    </CardContent>
-                </Card>
-
-                 {/* Total Customers Card */}
-                 <Card className="group hover:shadow-lg transition-shadow border border-border rounded-lg overflow-hidden">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-muted/30">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">Total Customers</CardTitle>
-                        <Users className="h-5 w-5 text-muted-foreground group-hover:scale-110 transition-transform" />
-                    </CardHeader>
-                    <CardContent className="pt-4">
-                        <div className="text-3xl font-bold">{summary.totalCustomers ?? '--'}</div>
-                         <p className="text-xs text-muted-foreground mt-1">Registered customers</p>
-                     </CardContent>
-                 </Card>
-
+          {/* Loading State */}
+          {loadingSummary && ( // Show loading only for summary section
+            <div className="flex justify-center items-center py-16 text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <span className="ml-3 text-lg">Loading summary...</span>
             </div>
-            )}
-             {/* Message if summary is empty and not loading */}
-             {!summary && !loading && !error && (
-                <div className="text-center py-16 text-muted-foreground">
-                    No summary data available yet. Start by adding customers and loans.
-                </div>
-             )}
+          )}
+          {/* Summary Data Grid */}
+          {summary && !loadingSummary && !error && (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <MetricCard
+                title="Outstanding Balance"
+                value={formatCurrency(summary.totalOutstanding)}
+                description={`${
+                  summary.activeLoanCount ?? "--"
+                } active loan(s)`}
+                icon={ListChecks}
+                iconColor="text-orange-500"
+                valueColor="text-orange-600"
+              />
+              <MetricCard
+                title="Overdue Amount"
+                value={formatCurrency(summary.totalOverdueAmount)}
+                description={`${
+                  summary.overdueLoanCount ?? "--"
+                } overdue loan(s)`}
+                icon={AlertTriangle}
+                iconColor="text-destructive"
+                valueColor="text-destructive"
+              />
+              <MetricCard
+                title="Total Collected"
+                value={formatCurrency(summary.totalCollected)}
+                description="Total amount repaid"
+                icon={PiggyBank}
+                iconColor="text-green-600"
+                valueColor="text-green-600"
+              />
+              <MetricCard
+                title="Total Customers"
+                value={String(summary.totalCustomers ?? "--")}
+                description="Registered customers"
+                icon={Users}
+                iconColor="text-muted-foreground"
+              />
+            </div>
+          )}
+          {/* Message if summary is empty and not loading */}
+          {!summary && !loadingSummary && !error && (
+            <div className="text-center py-16 text-muted-foreground">
+              No summary data available yet. Start by adding customers and
+              loans.
+            </div>
+          )}
         </CardContent>
       </Card>
 
-        {/* Quick Navigation Links */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {/* Manage Customers Card Link */}
-           <Card className="group hover:bg-accent/5 hover:border-primary/50 transition-colors border rounded-lg">
-             <Link href="/dashboard/customers" className="block h-full p-6">
-               <div className="flex items-center justify-between mb-2">
-                   <CardTitle className="flex items-center gap-2 text-lg"><Users className="h-5 w-5 text-primary"/> Customers</CardTitle>
-                   <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-1 transition-transform" />
-               </div>
-               <CardDescription className="text-sm">View, add, or edit your customer profiles.</CardDescription>
-             </Link>
-           </Card>
-            {/* Manage Loans Card Link */}
-           <Card className="group hover:bg-accent/5 hover:border-primary/50 transition-colors border rounded-lg">
-              <Link href="/dashboard/loans" className="block h-full p-6">
-               <div className="flex items-center justify-between mb-2">
-                  <CardTitle className="flex items-center gap-2 text-lg"><ListChecks className="h-5 w-5 text-primary"/> Loans</CardTitle>
-                  <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-1 transition-transform" />
-               </div>
-               <CardDescription className="text-sm">Track all active and past credit sales and repayments.</CardDescription>
+      {/* Quick Navigation Links */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <QuickLinkCard
+          href="/dashboard/customers"
+          title="Customers"
+          description="View, add, or edit profiles."
+          icon={Users}
+        />
+        <QuickLinkCard
+          href="/dashboard/loans"
+          title="Loans"
+          description="Track credit sales & payments."
+          icon={ListChecks}
+        />
+        <QuickLinkCard
+          href="/dashboard/summary"
+          title="Full Summary"
+          description="See detailed statistics."
+          icon={FileText}
+        />
+      </div>
+
+      {/* Overdue Loan Snippet Card */}
+      <Card className="border border-border shadow-sm rounded-lg">
+        <CardHeader className="flex flex-row items-center justify-between border-b pb-4">
+          <div>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <BellRing className="h-5 w-5 text-destructive" /> Overdue Alerts
+            </CardTitle>
+            <CardDescription>Top loans requiring attention.</CardDescription>
+          </div>
+          {summary &&
+            summary.overdueLoanCount > 5 && ( // Show "View All" if more than 5 overdue
+              <Link href="/dashboard/loans?status=overdue" passHref>
+                <Button variant="outline" size="sm">
+                  View All Overdue
+                </Button>
               </Link>
-           </Card>
-            {/* View Summary Card Link */}
-            <Card className="group hover:bg-accent/5 hover:border-primary/50 transition-colors border rounded-lg">
-              <Link href="/dashboard/summary" className="block h-full p-6">
-               <div className="flex items-center justify-between mb-2">
-                 <CardTitle className="flex items-center gap-2 text-lg"><FileText className="h-5 w-5 text-primary"/> Full Summary</CardTitle>
-                 <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-1 transition-transform" />
-               </div>
-               <CardDescription className="text-sm">See detailed statistics and performance metrics.</CardDescription>
-               </Link>
-           </Card>
-        </div>
-
-         {/* Overdue Loan Snippet */}
-         <Card>
-            <CardHeader>
-                <CardTitle className="text-lg">Overdue Loan Alerts</CardTitle>
-                <CardDescription>Top loans requiring attention.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                {/* Placeholder for overdue loans list */}
-               {loading && (
-                 <div className="flex justify-center items-center py-16 text-muted-foreground">
-                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                    <span className="ml-3 text-lg">Loading overdue loans...</span>
-                </div>
-               )}
-               {!loading && summary && summary.overdueLoanCount > 0 && (
-                <ul className="divide-y divide-border">
-                  {/* Example of how to render a loan - replace with actual data */}
-                  <li className="py-4 flex justify-between items-center">
-                    <div className="flex flex-col">
-                       <span className="font-medium">Customer Name</span>
-                       <span className="text-sm text-muted-foreground">Loan ID: #12345</span>
+            )}
+        </CardHeader>
+        <CardContent className="pt-4 px-0">
+          {loadingOverdue && (
+            <div className="flex justify-center items-center py-10 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              <span className="ml-2">Loading overdue loans...</span>
+            </div>
+          )}
+          {!loadingOverdue && overdueLoans.length > 0 && (
+            <ul className="divide-y divide-border">
+              {overdueLoans.map((loan) => (
+                <li
+                  key={loan._id}
+                  className="px-6 py-3 hover:bg-muted/50 transition-colors"
+                >
+                  <Link
+                    href={`/dashboard/loans/${loan._id}`}
+                    className="flex justify-between items-center gap-4"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">
+                        {loan.customer?.name || "Unknown Customer"}
+                      </p>
+                      <p className="text-sm text-muted-foreground truncate">
+                        {loan.description}
+                      </p>
                     </div>
-                    <div className="font-medium text-destructive">₹1,500</div>
-                  </li>
-                   {/* Add more overdue loan list items here */}
-                </ul>
-              )}
-              {!loading && summary && summary.overdueLoanCount === 0 && (
-                <p className="text-muted-foreground text-sm">No overdue loans needing immediate attention.</p>
-              )}
-           </CardContent>
-         </Card>
-
-       </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="font-semibold text-destructive">
+                        {formatCurrency(loan.balance)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Due: {format(parseISO(loan.dueDate), "dd/MM/yyyy")}
+                      </p>
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+          {/* Show message if loading is done and no overdue loans found */}
+          {!loadingOverdue && overdueLoans.length === 0 && (
+            <p className="text-muted-foreground text-sm text-center py-10 px-6">
+              No overdue loans needing immediate attention. Great job!
+            </p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
-    
+// --- Reusable Helper Components ---
+
+interface MetricCardProps {
+  title: string;
+  value: string;
+  description: string;
+  icon: React.ElementType;
+  iconColor?: string;
+  valueColor?: string;
+}
+
+function MetricCard({
+  title,
+  value,
+  description,
+  icon: Icon,
+  iconColor = "text-primary",
+  valueColor = "text-foreground",
+}: MetricCardProps) {
+  return (
+    <div className="p-4 border rounded-lg bg-card shadow-sm hover:shadow-md transition-shadow">
+      <div className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <h3 className="text-sm font-medium text-muted-foreground tracking-tight">
+          {title}
+        </h3>
+        <Icon className={cn("h-5 w-5", iconColor)} />
+      </div>
+      <div>
+        <div className={cn("text-2xl font-bold", valueColor)}>{value}</div>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+    </div>
+  );
+}
+
+interface QuickLinkCardProps {
+  href: string;
+  title: string;
+  description: string;
+  icon: React.ElementType;
+}
+
+function QuickLinkCard({
+  href,
+  title,
+  description,
+  icon: Icon,
+}: QuickLinkCardProps) {
+  return (
+    <Card className="group hover:bg-muted/50 hover:border-primary/50 transition-colors border rounded-lg shadow-sm">
+      <Link href={href} className="block h-full p-5">
+        <div className="flex items-center justify-between mb-2">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Icon className="h-5 w-5 text-primary" /> {title}
+          </CardTitle>
+          <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-1 transition-transform" />
+        </div>
+        <CardDescription className="text-sm">{description}</CardDescription>
+      </Link>
+    </Card>
+  );
+}

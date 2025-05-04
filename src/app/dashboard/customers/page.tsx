@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { PlusCircle, Edit, Trash2, AlertTriangle, Loader2, UserPlus, Users, Phone, HomeIcon, Star, IndianRupee, ArrowRight } from 'lucide-react'; // Added relevant icons
+import { PlusCircle, Edit, Trash2, AlertTriangle, Loader2, UserPlus, Users, Phone, HomeIcon, Star, IndianRupee, ArrowRight, FileText, BookText } from 'lucide-react'; // Added icons
 import { getAuthHeaders } from '@/lib/auth';
 import { format } from 'date-fns';
 import { Types } from 'mongoose'; // Import Types
@@ -25,6 +25,7 @@ interface Customer {
   name: string;
   phone: string;
   address?: string;
+  notes?: string; // Added notes
   trustScore: number;
   creditLimit: number;
   createdAt: string; // ISO String dates from API
@@ -44,6 +45,7 @@ export default function CustomersPage() {
     name: '',
     phone: '',
     address: '',
+    notes: '', // Initialize notes
     trustScore: 5, // Default value
     creditLimit: 0, // Default value
   });
@@ -71,6 +73,8 @@ export default function CustomersPage() {
         throw new Error(errorData.message || `Failed to fetch customers (${response.status})`);
       }
       const data: Customer[] = await response.json();
+       // Sort customers alphabetically by name
+       data.sort((a, b) => a.name.localeCompare(b.name));
       setCustomers(data);
     } catch (err: any) {
         console.error("Fetch Customers Error:", err);
@@ -108,6 +112,7 @@ export default function CustomersPage() {
         name: '',
         phone: '',
         address: '',
+        notes: '', // Reset notes
         trustScore: 5,
         creditLimit: 0,
     });
@@ -123,6 +128,7 @@ export default function CustomersPage() {
               name: customer.name,
               phone: customer.phone,
               address: customer.address || '',
+              notes: customer.notes || '', // Set notes from customer data
               trustScore: customer.trustScore,
               creditLimit: customer.creditLimit,
           });
@@ -166,7 +172,7 @@ export default function CustomersPage() {
         setIsSubmitting(false);
         return;
      }
-     // Basic Indian phone number format check (optional, can be more robust)
+     // Basic Indian phone number format check
      if (!/^[6-9]\d{9}$/.test(formData.phone.replace(/\s+/g, ''))) {
          setFormError('Please enter a valid 10-digit Indian mobile number.');
          setIsSubmitting(false);
@@ -334,7 +340,12 @@ export default function CustomersPage() {
                         {/* Address Textarea */}
                         <div className="space-y-2">
                            <Label htmlFor="address">Address</Label>
-                           <Textarea id="address" name="address" value={formData.address ?? ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="Optional: House No, Street, Area, City" rows={3}/>
+                           <Textarea id="address" name="address" value={formData.address ?? ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="Optional: House No, Street, Area, City" rows={2}/>
+                        </div>
+                         {/* Notes Textarea */}
+                        <div className="space-y-2">
+                           <Label htmlFor="notes">Notes</Label>
+                           <Textarea id="notes" name="notes" value={formData.notes ?? ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="Optional: Any relevant customer information" rows={2}/>
                         </div>
                         {/* Trust Score and Credit Limit Inputs */}
                         <div className="grid grid-cols-2 gap-4">
@@ -400,10 +411,11 @@ export default function CustomersPage() {
                     <TableRow>
                       <TableHead className="pl-6">Name</TableHead>
                       <TableHead><Phone className="inline-block h-4 w-4 mr-1"/>Phone</TableHead>
-                      <TableHead className="hidden md:table-cell"><HomeIcon className="inline-block h-4 w-4 mr-1"/>Address</TableHead>
+                      <TableHead className="hidden lg:table-cell"><HomeIcon className="inline-block h-4 w-4 mr-1"/>Address</TableHead>
+                      <TableHead className="hidden xl:table-cell"><BookText className="inline-block h-4 w-4 mr-1"/>Notes</TableHead>
                       <TableHead className="text-center"><Star className="inline-block h-4 w-4 mr-1"/>Trust</TableHead>
                       <TableHead className="text-right"><IndianRupee className="inline-block h-4 w-4 mr-1"/>Credit Limit</TableHead>
-                       <TableHead className="hidden lg:table-cell text-right pr-6">Added On</TableHead>
+                       {/* <TableHead className="hidden lg:table-cell text-right pr-6">Added On</TableHead> */}
                       {/* Sticky Actions Column */}
                       <TableHead className="text-right sticky right-0 bg-card z-10 px-4">Actions</TableHead>
                     </TableRow>
@@ -413,12 +425,13 @@ export default function CustomersPage() {
                       <TableRow key={customer._id} className="group hover:bg-muted/50">
                         <TableCell className="font-medium pl-6">{customer.name}</TableCell>
                         <TableCell>{customer.phone}</TableCell>
-                        <TableCell className="hidden md:table-cell max-w-xs truncate text-muted-foreground">{customer.address || '--'}</TableCell>
+                        <TableCell className="hidden lg:table-cell max-w-xs truncate text-muted-foreground">{customer.address || '--'}</TableCell>
+                        <TableCell className="hidden xl:table-cell max-w-xs truncate text-muted-foreground">{customer.notes || '--'}</TableCell>
                         <TableCell className="text-center font-medium">{customer.trustScore}/10</TableCell>
                         <TableCell className="text-right">{formatCurrency(customer.creditLimit)}</TableCell>
-                        <TableCell className="hidden lg:table-cell text-right text-sm text-muted-foreground pr-6">
+                        {/* <TableCell className="hidden lg:table-cell text-right text-sm text-muted-foreground pr-6">
                             {format(new Date(customer.createdAt), 'dd MMM yyyy')}
-                        </TableCell>
+                        </TableCell> */}
                         {/* Action Buttons - Sticky */}
                         <TableCell className="text-right space-x-1 sticky right-0 bg-card group-hover:bg-muted/50 transition-colors z-10 px-4">
                              {/* Edit Button */}
@@ -464,7 +477,7 @@ export default function CustomersPage() {
                     Are you sure you want to permanently delete the customer <strong className="text-foreground">"{customerToDelete?.name}"</strong>?
                 </p>
                 <p className="text-sm text-destructive mt-2">
-                    This action cannot be undone. Ensure the customer has no outstanding loans before deleting.
+                    This action cannot be undone. Ensure the customer has no associated loans before deleting.
                 </p>
              </div>
              {/* Dialog Footer for Delete Confirmation */}
@@ -480,5 +493,3 @@ export default function CustomersPage() {
     </div>
   );
 }
-
-    

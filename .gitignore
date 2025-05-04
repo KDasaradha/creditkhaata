@@ -84,6 +84,7 @@ web_modules/
 # Removed as this is no longer a Next.js project
 .next/
 out/
+.next
 
 # Nuxt.js build output
 .nuxt

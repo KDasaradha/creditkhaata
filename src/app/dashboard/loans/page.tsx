@@ -14,7 +14,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { PlusCircle, Edit, Trash2, AlertTriangle, Loader2, CalendarIcon, Eye, ListFilter, Search, FilePlus, ListChecks, IndianRupee, Users, Clock, Repeat, Percent } from 'lucide-react'; // Added more relevant icons
+import { PlusCircle, Edit, Trash2, AlertTriangle, Loader2, CalendarIcon, Eye, ListFilter, Search, FilePlus, ListChecks, IndianRupee, Users, Clock, Repeat, Percent, Tag } from 'lucide-react'; // Added Tag icon
 import { getAuthHeaders } from '@/lib/auth';
 import { format, parseISO, isBefore, isValid } from 'date-fns'; // Added isValid
 import { useRouter } from 'next/navigation';
@@ -37,6 +37,7 @@ interface Loan {
   description: string;
   amount: number;
   balance: number;
+  category?: string; // Added category
   issueDate: string; // ISO String
   dueDate: string; // ISO String
   frequency: 'bi-weekly' | 'monthly' | 'one-time';
@@ -52,6 +53,7 @@ interface LoanFormData {
     customerId: string; // Always store ID in form
     description: string;
     amount: number | string; // Allow string during input
+    category?: string; // Added category
     issueDate: Date | undefined;
     dueDate: Date | undefined;
     frequency: 'bi-weekly' | 'monthly' | 'one-time';
@@ -74,6 +76,7 @@ export default function LoansPage() {
     customerId: '',
     description: '',
     amount: '',
+    category: '', // Initialize category
     issueDate: new Date(), // Default issue date to today
     dueDate: undefined,
     frequency: 'monthly',
@@ -118,6 +121,8 @@ export default function LoansPage() {
             throw new Error(errData.message || 'Failed to fetch customers');
         }
         const customerData: Customer[] = await customerResponse.json();
+        // Sort customers by name
+        customerData.sort((a, b) => a.name.localeCompare(b.name));
         setCustomers(customerData);
 
         // Then fetch loans
@@ -154,6 +159,7 @@ export default function LoansPage() {
         customerId: '',
         description: '',
         amount: '',
+        category: '', // Reset category
         issueDate: new Date(), // Reset issue date to today
         dueDate: undefined,
         frequency: 'monthly',
@@ -178,6 +184,7 @@ export default function LoansPage() {
             customerId: typeof loan.customer === 'string' ? loan.customer : loan.customer._id,
             description: loan.description,
             amount: loan.amount,
+            category: loan.category || '', // Set category
             issueDate: isValid(issueDate) ? issueDate : new Date(), // Fallback if parsing fails
             dueDate: isValid(dueDate) ? dueDate : undefined,       // Fallback if parsing fails
             frequency: loan.frequency,
@@ -280,7 +287,7 @@ export default function LoansPage() {
         customerId: formData.customerId,
         description: formData.description,
         amount: amountNum,
-        balance: amountNum, // Include balance equal to amount
+        category: formData.category?.trim() || undefined, // Add category, trim, send undefined if empty
         issueDate: formData.issueDate?.toISOString(),
         dueDate: formData.dueDate?.toISOString(),
         frequency: formData.frequency,
@@ -291,6 +298,7 @@ export default function LoansPage() {
     // For PUT, only send fields that are editable according to backend logic
     const payload = editingLoan ? {
         description: payloadBase.description,
+        category: payloadBase.category, // Include category in PUT
         dueDate: payloadBase.dueDate,
         frequency: payloadBase.frequency,
         interestRate: payloadBase.interestRate,
@@ -489,11 +497,21 @@ export default function LoansPage() {
                                      )}
                                 </div>
 
-                                {/* Description */}
-                               <div className="space-y-2">
-                                   <Label htmlFor="description">Description <span className="text-destructive">*</span></Label>
-                                   <Textarea id="description" name="description" value={formData.description} onChange={handleInputChange} required disabled={isSubmitting} placeholder="e.g., Groceries, Repair service, Advance" className="text-base" rows={2}/>
-                               </div>
+                                {/* Description & Category */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="description">Description <span className="text-destructive">*</span></Label>
+                                        <Textarea id="description" name="description" value={formData.description} onChange={handleInputChange} required disabled={isSubmitting} placeholder="e.g., Groceries, Repair service, Advance" className="text-base" rows={2}/>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="category">Category</Label>
+                                        <div className="relative">
+                                            <Tag className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                            <Input id="category" name="category" value={formData.category ?? ''} onChange={handleInputChange} disabled={isSubmitting} placeholder="Optional: e.g., Food, Electronics" className="pl-10 text-base"/>
+                                        </div>
+                                    </div>
+                                </div>
+
 
                                {/* Amount & Frequency */}
                                <div className="grid grid-cols-2 gap-4">
@@ -655,11 +673,11 @@ export default function LoansPage() {
                 <Table>
                 <TableHeader>
                     <TableRow>
-                    <TableHead className="pl-6 w-[25%]"><Users className="inline-block h-4 w-4 mr-1"/>Customer</TableHead>
-                    <TableHead className="hidden md:table-cell w-[25%]">Description</TableHead>
+                    <TableHead className="pl-6 w-[20%]"><Users className="inline-block h-4 w-4 mr-1"/>Customer</TableHead>
+                    <TableHead className="w-[25%]">Description</TableHead>
+                    {/* <TableHead className="hidden xl:table-cell"><Tag className="inline-block h-4 w-4 mr-1"/>Category</TableHead> */}
                     <TableHead className="text-right"><IndianRupee className="inline-block h-4 w-4 mr-1"/>Amount</TableHead>
                     <TableHead className="text-right"><IndianRupee className="inline-block h-4 w-4 mr-1"/>Balance</TableHead>
-                    {/* <TableHead className="hidden lg:table-cell text-center">Issued</TableHead> */}
                     <TableHead className="text-center"><CalendarIcon className="inline-block h-4 w-4 mr-1"/>Due</TableHead>
                     <TableHead className="text-center">Status</TableHead>
                     {/* Sticky Actions Header */}
@@ -670,10 +688,10 @@ export default function LoansPage() {
                     {loans.map((loan) => (
                     <TableRow key={loan._id} className="group hover:bg-muted/50">
                         <TableCell className="font-medium pl-6">{getCustomerName(loan.customer)}</TableCell>
-                        <TableCell className="hidden md:table-cell max-w-[200px] truncate text-muted-foreground">{loan.description}</TableCell>
+                        <TableCell className="max-w-[200px] truncate text-muted-foreground">{loan.description}</TableCell>
+                        {/* <TableCell className="hidden xl:table-cell text-muted-foreground">{loan.category || '--'}</TableCell> */}
                         <TableCell className="text-right">{formatCurrency(loan.amount)}</TableCell>
                         <TableCell className={cn("text-right font-semibold", Number(loan.balance) > 0 ? 'text-orange-600' : 'text-green-600')}>{formatCurrency(loan.balance)}</TableCell>
-                        {/* <TableCell className="hidden lg:table-cell text-center text-sm text-muted-foreground">{format(parseISO(loan.issueDate), 'dd MMM yy')}</TableCell> */}
                         <TableCell className="text-center text-sm">{format(parseISO(loan.dueDate), 'dd MMM yy')}</TableCell>
                         <TableCell className="text-center">
                             <Badge variant={getStatusBadgeVariant(loan.status)} className="text-xs px-2 py-0.5">{getStatusBadgeText(loan.status)}</Badge>
@@ -741,5 +759,3 @@ export default function LoansPage() {
     </div>
   );
 }
-
-    

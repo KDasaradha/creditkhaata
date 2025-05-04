@@ -2,10 +2,13 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
+export type UserRole = 'admin' | 'staff'; // Define possible roles
+
 // Interface representing a document in MongoDB.
 export interface IUser extends Document {
   email: string;
   password?: string; // Optional because it's excluded by default and during hashing
+  role: UserRole; // Added role field
   registeredAt: Date;
   // Method declaration for Mongoose instance methods
   correctPassword(candidatePassword: string, userPassword?: string): Promise<boolean>;
@@ -31,6 +34,12 @@ const UserSchema: Schema<IUser, IUserModel> = new Schema({
     required: [true, 'Password is required'],
     minlength: [6, 'Password must be at least 6 characters long'],
     select: false, // Don't return password by default when querying User documents
+  },
+   role: { // Added role field definition
+    type: String,
+    enum: ['admin', 'staff'],
+    default: 'admin', // Default role is admin (the main shopkeeper)
+    required: true,
   },
   registeredAt: {
     type: Date,
@@ -67,15 +76,21 @@ UserSchema.methods.correctPassword = async function (
     let hashToCompare = userPassword;
 
     // If userPassword wasn't passed (meaning it wasn't selected in the initial query), fetch it now.
-    if (!hashToCompare) {
+    if (!hashToCompare && this._id) { // Check if _id exists
         console.log(`Password not selected for user ${this.email}, fetching now for comparison.`);
-        const userWithPassword = await mongoose.model<IUser>('User').findById(this._id).select('+password').lean(); // Use lean for plain object
-        if (!userWithPassword || !userWithPassword.password) {
-            // Handle case where user or password cannot be retrieved
-            console.error(`Could not retrieve password hash for user ${this.email} for comparison.`);
-            return false;
+        try {
+            const userWithPassword = await mongoose.model<IUser>('User').findById(this._id).select('+password').lean(); // Use lean for plain object
+             if (!userWithPassword || !userWithPassword.password) {
+                // Handle case where user or password cannot be retrieved
+                console.error(`Could not retrieve password hash for user ${this.email} for comparison.`);
+                return false;
+            }
+            hashToCompare = userWithPassword.password;
+        } catch (fetchError) {
+             console.error(`Error fetching password for user ${this.email}:`, fetchError);
+             return false;
         }
-        hashToCompare = userWithPassword.password;
+
     }
 
     // Ensure candidatePassword is a string and hashToCompare is available
@@ -100,5 +115,3 @@ UserSchema.methods.correctPassword = async function (
 const User = (mongoose.models.User as IUserModel || mongoose.model<IUser, IUserModel>('User', UserSchema));
 
 export default User;
-
-    

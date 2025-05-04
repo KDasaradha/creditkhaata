@@ -16,16 +16,6 @@
       "static/css/app/layout.css",
       "static/chunks/app/layout.js"
     ],
-    "/(auth)/login/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(auth)/login/page.js"
-    ],
-    "/(auth)/layout": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(auth)/layout.js"
-    ],
     "/dashboard/customers/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -35,6 +25,11 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/dashboard/loans/page.js"
+    ],
+    "/dashboard/loans/[loanId]/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/dashboard/loans/[loanId]/page.js"
     ],
     "/dashboard/summary/page": [
       "static/chunks/webpack.js",
