@@ -6,7 +6,21 @@ import Loan from '@/models/Loan';
 import Repayment from '@/models/Repayment';
 import Customer from '@/models/Customer'; // Import Customer model
 import { getUserIdFromRequest } from '@/lib/server-utils';
-import { differenceInDays, startOfDay, isValid } from 'date-fns'; // Import isValid
+import { differenceInDays, startOfDay, isValid, parseISO } from 'date-fns'; // Import parseISO
+import { processOverdueLoansAndInterest } from '@/lib/loans'; // Import processing function
+
+// Interface for the expected summary structure
+interface ShopkeeperSummary {
+  totalLoaned: number;
+  totalCollected: number;
+  totalOutstanding: number; // Principal + Overdue Interest
+  totalOverdueAmount: number; // Principal + Overdue Interest for overdue loans
+  overdueLoanCount: number;
+  averageRepaymentTimeDays: number | null;
+  totalCustomers: number;
+  activeLoanCount: number;
+}
+
 
 // Helper function to handle database connection errors
 async function ensureDbConnection() {
@@ -18,43 +32,44 @@ async function ensureDbConnection() {
     }
 }
 
+// Helper to add CORS headers
+function addCorsHeaders(response: NextResponse): NextResponse {
+    // Allow requests from all origins in development.
+    // In production, replace '*' with your specific frontend origin.
+    const allowedOrigin = '*'; // Or dynamically get from req.headers.get('origin')
+    response.headers.set('Access-Control-Allow-Origin', allowedOrigin);
+    response.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    response.headers.set('Access-Control-Allow-Credentials', 'true'); // Important if using credentials/cookies
+    return response;
+}
+
+// Handle OPTIONS requests for CORS preflight
+export async function OPTIONS(req: NextRequest) {
+  const response = new NextResponse(null, { status: 204 });
+  return addCorsHeaders(response);
+}
+
 
 export async function GET(req: NextRequest) {
     let userId;
+    let response: NextResponse;
     try {
         // Authenticate and connect to DB
         userId = await getUserIdFromRequest(req);
         const shopkeeperObjectId = new mongoose.Types.ObjectId(userId); // Ensure it's an ObjectId for matching
         await ensureDbConnection();
 
-        // --- Update Loan Statuses First ---
-        // Ensure overdue and paid statuses are correct before aggregation
-        const todayStart = startOfDay(new Date());
-        try {
-             // Update pending to overdue
-             await Loan.updateMany(
-                 {
-                     shopkeeper: shopkeeperObjectId,
-                     status: 'pending',
-                     balance: { $gt: 0 },
-                     $expr: { $gt: [ todayStart, { $add: [ "$dueDate", { $multiply: [ "$graceDays", 24*60*60*1000 ] } ] } ] }
-                 },
-                 { $set: { status: "overdue", updatedAt: new Date() } }
-             );
-             // Update pending/overdue to paid if balance <= 0
-             await Loan.updateMany(
-                 {
-                     shopkeeper: shopkeeperObjectId,
-                     status: { $in: ['pending', 'overdue'] },
-                     balance: { $lte: 0 }
-                 },
-                 { $set: { status: "paid", updatedAt: new Date() } }
-             );
-              console.log(`Checked and updated loan statuses before summary for user ${userId}.`);
-         } catch (updateError: any) {
-             console.error(`Error updating loan statuses before summary for user ${userId}:`, updateError);
-             // Log and continue, summary might be slightly stale if updates fail.
-         }
+        // --- Process Overdue Loans and Interest First ---
+        // Ensure statuses and balances (including potential overdue interest) are correct before aggregation
+        console.log(`GET /api/summary: Triggering overdue processing for user ${userId}...`);
+         try {
+            await processOverdueLoansAndInterest(shopkeeperObjectId);
+        } catch (processingError: any) {
+            console.error(`Error during pre-summary overdue processing for user ${userId}:`, processingError);
+            // Log and continue, summary might be slightly stale if processing fails.
+        }
+         console.log(`GET /api/summary: Overdue processing complete for user ${userId}. Calculating summary...`);
 
 
         // --- Perform Aggregations Concurrently ---
@@ -62,34 +77,35 @@ export async function GET(req: NextRequest) {
         const [
             totalLoanedResult,
             totalCollectedResult,
-            totalOutstandingResult,
-            totalOverdueResult,
+            totalOutstandingResult, // Now includes potentially added overdue interest
+            totalOverdueResult,     // Now includes potentially added overdue interest
             paidLoansForAvgCalc, // Fetch necessary data for avg repayment time calc
             totalCustomersCount, // Count total customers
-            activeLoanCount // Count active loans
+            activeLoanCount // Count active loans (pending or overdue)
         ] = await Promise.all([
-            // 1. Total Loaned Amount
+            // 1. Total Loaned Amount (Original principal)
             Loan.aggregate([
                 { $match: { shopkeeper: shopkeeperObjectId } },
-                { $group: { _id: null, totalLoaned: { $sum: "$amount" } } }
+                { $group: { _id: null, totalLoaned: { $sum: "$amount" } } } // Sum original amount
             ]),
             // 2. Total Collected Amount (Sum of all repayments)
             Repayment.aggregate([
                 { $match: { shopkeeper: shopkeeperObjectId } },
                 { $group: { _id: null, totalCollected: { $sum: "$amount" } } }
             ]),
-             // 3. Total Outstanding Balance (Sum of balance for non-paid loans)
+             // 3. Total Outstanding Balance (Sum of CURRENT balance for non-paid loans)
+             // This balance field NOW includes any overdue interest added by the processing step
             Loan.aggregate([
-                // Match loans that are 'pending' or 'overdue'
                 { $match: { shopkeeper: shopkeeperObjectId, status: { $in: ['pending', 'overdue'] } } },
                 { $group: { _id: null, totalOutstanding: { $sum: "$balance" } } }
             ]),
-            // 4. Total Overdue Amount & Count (Sum balance of 'overdue' loans)
+            // 4. Total Overdue Amount & Count (Sum CURRENT balance of 'overdue' loans)
+             // This balance field NOW includes any overdue interest added by the processing step
             Loan.aggregate([
                 { $match: { shopkeeper: shopkeeperObjectId, status: 'overdue' } },
                 { $group: {
                     _id: null,
-                    totalOverdueAmount: { $sum: "$balance" },
+                    totalOverdueAmount: { $sum: "$balance" }, // Sum current balance (incl. interest)
                     overdueLoanCount: { $sum: 1 } // Count documents matching 'overdue'
                 }}
             ]),
@@ -98,8 +114,8 @@ export async function GET(req: NextRequest) {
                  .select('issueDate repayments amount dueDate') // Select fields needed for calc
                  .populate({ // Populate repayment dates, sorted descending
                      path: 'repayments',
-                     select: 'date',
-                     options: { sort: { 'date': -1 } }
+                     select: 'date', // Only need the date of repayments
+                     options: { sort: { 'date': -1 } } // Get latest repayment first
                  })
                  .lean(), // Use lean for efficiency
              // 6. Total Customers Count
@@ -166,24 +182,22 @@ export async function GET(req: NextRequest) {
             activeLoanCount: activeLoanCount ?? 0, // Default to 0 if count fails
         };
 
-        return NextResponse.json(summary);
+        response = NextResponse.json(summary);
 
     } catch (error: any) {
         console.error('GET Summary API error:', error);
          // Handle specific errors
         if (error.message.startsWith('Not authorized')) {
-            return NextResponse.json({ message: error.message }, { status: 401 });
-        }
-        if (error.message.includes('Could not connect to database')) {
-            return NextResponse.json({ message: error.message }, { status: 503 }); // Service Unavailable
-        }
-        if (error instanceof mongoose.Error) { // Catch Mongoose errors during aggregation/find/count
+            response = NextResponse.json({ message: error.message }, { status: 401 });
+        } else if (error.message.includes('Could not connect to database')) {
+            response = NextResponse.json({ message: error.message }, { status: 503 }); // Service Unavailable
+        } else if (error instanceof mongoose.Error) { // Catch Mongoose errors during aggregation/find/count
             console.error('Mongoose error fetching summary:', error);
-            return NextResponse.json({ message: 'Database error fetching summary data.' }, { status: 500 });
-         }
-        // Generic error
-        return NextResponse.json({ message: 'Server error fetching summary', error: error.message || 'Unknown error' }, { status: 500 });
+            response = NextResponse.json({ message: 'Database error fetching summary data.' }, { status: 500 });
+         } else {
+            // Generic error
+            response = NextResponse.json({ message: 'Server error fetching summary', error: error.message || 'Unknown error' }, { status: 500 });
+        }
     }
+    return addCorsHeaders(response);
 }
-
-    

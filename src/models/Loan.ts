@@ -12,15 +12,16 @@ export interface ILoan extends Document {
   customer: Types.ObjectId;
   description: string;
   amount: number;
-  balance: number;
+  balance: number; // Represents principal + any regular interest added, NOT overdue interest
   category?: string; // Added category field
   issueDate: Date;
   dueDate: Date;
   frequency: LoanFrequency;
-  interestRate: number;
+  interestRate: number; // Annual interest rate %
   graceDays: number;
   status: LoanStatus;
   repayments: Types.ObjectId[]; // Array of Repayment ObjectIds
+  lastInterestCalculationDate?: Date; // Track when overdue interest was last calculated/added
   createdAt: Date;
   updatedAt: Date;
 
@@ -59,7 +60,7 @@ const LoanSchema: Schema<ILoan, ILoanModel> = new Schema({
     required: [true, 'Loan amount is required'],
     min: [0.01, 'Loan amount must be positive'],
   },
-  balance: { // Current outstanding balance
+  balance: { // Current outstanding balance (Principal + Regular Interest)
     type: Number,
     required: true,
     min: [0, 'Balance cannot be negative'],
@@ -84,7 +85,8 @@ const LoanSchema: Schema<ILoan, ILoanModel> = new Schema({
             const issueD = this.issueDate instanceof Date ? this.issueDate : parseISO(String(this.issueDate));
             const dueD = value instanceof Date ? value : parseISO(String(value));
             if (!isValid(issueD) || !isValid(dueD)) return false; // Fail if dates are invalid
-            return !isAfter(issueD, dueD);
+            // Allow due date to be the same as issue date
+            return !isAfter(startOfDay(issueD), startOfDay(dueD));
         },
         message: 'Due date cannot be before the issue date.'
     }
@@ -95,7 +97,7 @@ const LoanSchema: Schema<ILoan, ILoanModel> = new Schema({
     required: [true, 'Payment frequency is required'],
     default: 'monthly',
   },
-  interestRate: { // Optional annual interest rate percentage
+  interestRate: { // Optional annual interest rate percentage (applies when overdue)
     type: Number,
     min: [0, 'Interest rate cannot be negative'],
     default: 0,
@@ -120,6 +122,10 @@ const LoanSchema: Schema<ILoan, ILoanModel> = new Schema({
     type: Schema.Types.ObjectId,
     ref: 'Repayment',
   }],
+  lastInterestCalculationDate: { // Tracks the date up to which overdue interest has been calculated/applied
+      type: Date,
+      required: false,
+  },
 }, {
   // Enable virtuals to be included in JSON/object output
   toJSON: { virtuals: true },
@@ -134,7 +140,9 @@ LoanSchema.methods.calculateStatus = function(): LoanStatus {
   // Ensure balance is treated as a number
   const currentBalance = Number(this.balance);
 
-  if (currentBalance <= 0) {
+  // Tolerance for floating point comparisons
+  const tolerance = 0.001;
+  if (currentBalance <= tolerance) {
     return 'paid';
   }
 
@@ -166,6 +174,8 @@ LoanSchema.methods.calculateStatus = function(): LoanStatus {
 LoanSchema.pre<ILoan>('save', function(next) {
   if (this.isNew) {
     this.balance = this.amount; // Initial balance is the full amount
+     // Set initial interest calculation date to issue date for new loans
+     this.lastInterestCalculationDate = this.issueDate;
   }
    // Always recalculate status on save (new or update) to ensure accuracy
    this.status = this.calculateStatus();
@@ -187,3 +197,4 @@ LoanSchema.virtual('isOverdue').get(function(this: ILoan): boolean {
 const Loan = (mongoose.models.Loan as ILoanModel || mongoose.model<ILoan, ILoanModel>('Loan', LoanSchema));
 
 export default Loan;
+export type { ILoan as LoanDocument }; // Export type alias
