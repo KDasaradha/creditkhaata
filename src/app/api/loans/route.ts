@@ -6,6 +6,7 @@ import Customer from '@/models/Customer';
 import { getUserIdFromRequest } from '@/lib/server-utils';
 import { startOfDay, isAfter, parseISO, isValid } from 'date-fns'; // Use date-fns
 import mongoose from 'mongoose';
+import { processOverdueLoansAndInterest } from '@/lib/loans'; // Import processing function
 
 // Helper function to handle database connection errors
 async function ensureDbConnection() {
@@ -19,10 +20,13 @@ async function ensureDbConnection() {
 
 // Helper to add CORS headers
 function addCorsHeaders(response: NextResponse): NextResponse {
-    response.headers.set('Access-Control-Allow-Origin', '*'); // Adjust for production
+    // Allow requests from all origins in development.
+    // In production, replace '*' with your specific frontend origin.
+    const allowedOrigin = '*'; // Or dynamically get from req.headers.get('origin')
+    response.headers.set('Access-Control-Allow-Origin', allowedOrigin);
     response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS'); // Add PUT, DELETE if needed on this route
     response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    response.headers.set('Access-Control-Allow-Credentials', 'true');
+    response.headers.set('Access-Control-Allow-Credentials', 'true'); // Important if using credentials/cookies
     return response;
 }
 
@@ -43,6 +47,18 @@ export async function GET(req: NextRequest) {
     await ensureDbConnection();
     const shopkeeperObjectId = new mongoose.Types.ObjectId(userId);
 
+    // --- Process Overdue Loans and Interest First ---
+     // Ensures statuses and balances are up-to-date before fetching
+     console.log(`GET /api/loans: Triggering overdue processing for user ${userId}...`);
+     try {
+         await processOverdueLoansAndInterest(shopkeeperObjectId);
+     } catch (processingError: any) {
+         console.error(`Error during pre-fetch overdue processing for user ${userId}:`, processingError);
+         // Decide if this is fatal or just a warning. For now, log and continue.
+     }
+     console.log(`GET /api/loans: Overdue processing complete for user ${userId}. Fetching loans...`);
+
+
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
     const customerId = searchParams.get('customerId');
@@ -62,39 +78,6 @@ export async function GET(req: NextRequest) {
     }
      if (category) { // Added category filter logic
          filter.category = category; // Case-sensitive match, use $regex for case-insensitive if needed
-     }
-
-
-     // --- Update statuses before querying ---
-     // This is crucial for accuracy, especially for overdue status.
-     // Update loans from 'pending' to 'overdue' if conditions met.
-     // Also update loans to 'paid' if balance is zero or less.
-     const todayStart = startOfDay(new Date());
-      try {
-         // Update pending to overdue
-         await Loan.updateMany(
-            {
-                shopkeeper: shopkeeperObjectId,
-                status: 'pending',
-                balance: { $gt: 0 },
-                $expr: { $gt: [ todayStart, { $add: [ "$dueDate", { $multiply: [ "$graceDays", 24*60*60*1000 ] } ] } ] }
-            },
-            { $set: { status: "overdue", updatedAt: new Date() } }
-         );
-         // Update pending/overdue to paid if balance <= 0
-         await Loan.updateMany(
-             {
-                 shopkeeper: shopkeeperObjectId,
-                 status: { $in: ['pending', 'overdue'] }, // Can transition from pending or overdue
-                 balance: { $lte: 0 }
-             },
-             { $set: { status: "paid", updatedAt: new Date() } }
-         );
-          console.log(`Checked and updated loan statuses for user ${userId}.`);
-     } catch (updateError: any) {
-         console.error(`Error updating loan statuses for user ${userId}:`, updateError);
-         // Log and continue, as fetching might still work, but statuses might be slightly stale.
-         // Consider if this should be a fatal error depending on requirements.
      }
 
 
@@ -174,8 +157,8 @@ export async function POST(req: NextRequest) {
     }
     if (!parsedDueDate || !isValid(parsedDueDate)) {
          validationErrors.push('Due date is required and must be in ISO 8601 format.');
-    } else if (isValid(parsedIssueDate) && isAfter(parsedIssueDate, parsedDueDate)) {
-         // Check order only if both dates are valid
+    } else if (isValid(parsedIssueDate) && isAfter(startOfDay(parsedIssueDate), startOfDay(parsedDueDate))) {
+         // Check order only if both dates are valid, comparing start of day
          validationErrors.push('Due date must be on or after the issue date');
     }
 
@@ -224,6 +207,7 @@ export async function POST(req: NextRequest) {
         frequency,
         interestRate: numInterest,
         graceDays: numGraceDays,
+        lastInterestCalculationDate: parsedIssueDate, // Initialize interest calc date
         // status is set by pre-save middleware
     };
 

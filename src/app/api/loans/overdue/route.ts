@@ -5,6 +5,7 @@ import Loan, { ILoan } from '@/models/Loan';
 import { getUserIdFromRequest } from '@/lib/server-utils';
 import { startOfDay, addDays, parseISO, isValid } from 'date-fns'; // Import addDays, parseISO, isValid
 import mongoose from 'mongoose';
+import { processOverdueLoansAndInterest } from '@/lib/loans'; // Import processing function
 
 // Helper function to handle database connection errors
 async function ensureDbConnection() {
@@ -18,10 +19,13 @@ async function ensureDbConnection() {
 
 // Helper to add CORS headers
 function addCorsHeaders(response: NextResponse): NextResponse {
-    response.headers.set('Access-Control-Allow-Origin', '*'); // Adjust for production
+    // Allow requests from all origins in development.
+    // In production, replace '*' with your specific frontend origin.
+    const allowedOrigin = '*'; // Or dynamically get from req.headers.get('origin')
+    response.headers.set('Access-Control-Allow-Origin', allowedOrigin);
     response.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
     response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    response.headers.set('Access-Control-Allow-Credentials', 'true');
+    response.headers.set('Access-Control-Allow-Credentials', 'true'); // Important if using credentials/cookies
     return response;
 }
 
@@ -40,6 +44,18 @@ export async function GET(req: NextRequest) {
         userId = await getUserIdFromRequest(req);
         await ensureDbConnection();
         const shopkeeperObjectId = new mongoose.Types.ObjectId(userId); // Ensure correct type for matching
+
+        // --- Process Overdue Loans and Interest First ---
+        // Ensures statuses and balances are up-to-date before fetching overdue loans
+        console.log(`GET /api/loans/overdue: Triggering overdue processing for user ${userId}...`);
+        try {
+            await processOverdueLoansAndInterest(shopkeeperObjectId);
+        } catch (processingError: any) {
+            console.error(`Error during pre-fetch overdue processing for user ${userId}:`, processingError);
+            // Decide if this is fatal or just a warning. For now, log and continue.
+        }
+         console.log(`GET /api/loans/overdue: Overdue processing complete for user ${userId}. Fetching overdue loans...`);
+
 
         const { searchParams } = new URL(req.url);
         const limitParam = searchParams.get('limit');
@@ -63,33 +79,7 @@ export async function GET(req: NextRequest) {
         }
 
 
-        // --- Update statuses before querying ---
-        // Ensure the 'overdue' status is current based on today's date.
-        const todayStart = startOfDay(new Date());
-        try {
-            await Loan.updateMany(
-                {
-                    shopkeeper: shopkeeperObjectId,
-                    status: 'pending',
-                    balance: { $gt: 0 },
-                     $expr: {
-                         $gt: [
-                             todayStart,
-                             { $add: [ "$dueDate", { $multiply: [ "$graceDays", 24*60*60*1000 ] } ] }
-                         ]
-                     }
-                },
-                { $set: { status: "overdue", updatedAt: new Date() } }
-            );
-             console.log(`Checked and updated overdue status for user ${userId}.`);
-        } catch (updateError: any) {
-             console.error(`Error updating overdue status for user ${userId}:`, updateError);
-             response = NextResponse.json({ message: 'Server error updating loan statuses.' }, { status: 500 });
-             return addCorsHeaders(response);
-        }
-
-
-        // Now query for loans explicitly marked as 'overdue'
+        // Now query for loans explicitly marked as 'overdue' after processing
         const query = Loan.find({ shopkeeper: shopkeeperObjectId, status: 'overdue' })
                             .populate<{ customer: { _id: mongoose.Types.ObjectId, name: string } }>('customer', 'name') // Populate only customer name
                             .select('customer description balance dueDate') // Select fields needed for snippet
