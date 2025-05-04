@@ -8,6 +8,7 @@ export interface ICustomer extends Document {
   name: string;
   phone: string;
   address?: string;
+  notes?: string; // Added notes field
   trustScore: number;
   creditLimit: number;
   createdAt: Date;
@@ -37,17 +38,22 @@ const CustomerSchema: Schema<ICustomer, ICustomerModel> = new Schema({
     trim: true,
     validate: {
       validator: function(v: string) {
-        // Use validator library for potentially better phone validation (consider specific regions)
-        // return validator.isMobilePhone(v); // Example - might need locale
         // Basic validation allowing digits, spaces, hyphens, parens, +
-        return /^[\d\s\-()+]+$/.test(v);
+        // Consider a more robust library or specific regex for production
+        // Example for 10-digit Indian mobile numbers (adjust as needed):
+        return /^[6-9]\d{9}$/.test(v.replace(/\s+/g, ''));
       },
-      message: (props: { value: string }) => `${props.value} is not a valid phone number!`
+      message: (props: { value: string }) => `${props.value} is not a valid 10-digit mobile number!`
     },
     // If you need uniqueness per shopkeeper, a compound index is better:
     // index: { unique: true, partialFilterExpression: { phone: { $type: "string" } } } // Handle carefully
   },
   address: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  notes: { // Added notes field schema definition
     type: String,
     trim: true,
     default: '',
@@ -63,31 +69,8 @@ const CustomerSchema: Schema<ICustomer, ICustomerModel> = new Schema({
     min: [0, 'Credit limit cannot be negative'],
     default: 0,
   },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now,
-  }
-});
-
-// Middleware to automatically update `updatedAt` timestamp on save
-CustomerSchema.pre<ICustomer>('save', function(next) {
-  // Only update updatedAt if the document is not new or if other fields are modified
-  if (!this.isNew) {
-    this.updatedAt = new Date();
-  }
-  next();
-});
-
-// Middleware to update `updatedAt` on findOneAndUpdate
-// Note: Mongoose 6+ might handle this better, but explicit is safe.
-// This middleware applies to the *query*, not the document.
-CustomerSchema.pre('findOneAndUpdate', function(next) {
-  this.set({ updatedAt: new Date() });
-  next();
+}, {
+  timestamps: true // Use Mongoose built-in timestamps
 });
 
 // Compound index for shopkeeper and phone for uniqueness check if desired

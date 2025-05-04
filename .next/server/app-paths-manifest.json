@@ -1,13 +1,12 @@
 {
-  "/_not-found/page": "app/_not-found/page.js",
-  "/api/auth/login/route": "app/api/auth/login/route.js",
-  "/api/summary/route": "app/api/summary/route.js",
-  "/api/auth/logout/route": "app/api/auth/logout/route.js",
   "/api/customers/route": "app/api/customers/route.js",
   "/api/loans/route": "app/api/loans/route.js",
-  "/(auth)/login/page": "app/(auth)/login/page.js",
+  "/api/loans/[id]/route": "app/api/loans/[id]/route.js",
+  "/api/repayments/route": "app/api/repayments/route.js",
+  "/api/summary/route": "app/api/summary/route.js",
   "/dashboard/page": "app/dashboard/page.js",
-  "/dashboard/customers/page": "app/dashboard/customers/page.js",
   "/dashboard/loans/page": "app/dashboard/loans/page.js",
+  "/dashboard/loans/[loanId]/page": "app/dashboard/loans/[loanId]/page.js",
+  "/dashboard/customers/page": "app/dashboard/customers/page.js",
   "/dashboard/summary/page": "app/dashboard/summary/page.js"
 }

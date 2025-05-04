@@ -15,7 +15,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Separator } from '@/components/ui/separator';
 import { ArrowLeft, Loader2, AlertTriangle, CalendarIcon, Banknote, Info, CheckCircle2, Clock, Users, Phone, HomeIcon, IndianRupee, Percent, Repeat, Printer } from 'lucide-react'; // Added more icons
 import { getAuthHeaders } from '@/lib/auth';
-import { format, parseISO, differenceInDays, isBefore, isValid, startOfDay } from 'date-fns'; // Import necessary date-fns functions
+import { format, parseISO, differenceInDays, isBefore, isValid, startOfDay, addDays } from 'date-fns'; // Import necessary date-fns functions
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 

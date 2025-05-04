@@ -1,6 +1,6 @@
 // src/models/Loan.ts
 import mongoose, { Schema, Document, Model, Types } from 'mongoose';
-import { isAfter, startOfDay, addDays } from 'date-fns'; // Use date-fns for reliable date logic
+import { isAfter, startOfDay, addDays, isValid, parseISO } from 'date-fns'; // Use date-fns for reliable date logic
 
 // Type alias for loan status
 export type LoanStatus = 'pending' | 'paid' | 'overdue';
@@ -13,6 +13,7 @@ export interface ILoan extends Document {
   description: string;
   amount: number;
   balance: number;
+  category?: string; // Added category field
   issueDate: Date;
   dueDate: Date;
   frequency: LoanFrequency;
@@ -64,6 +65,11 @@ const LoanSchema: Schema<ILoan, ILoanModel> = new Schema({
     min: [0, 'Balance cannot be negative'],
     // Default balance will be set in pre-save middleware
   },
+  category: { // Added category field schema definition
+      type: String,
+      trim: true,
+      index: true, // Index for potential filtering by category
+  },
   issueDate: {
     type: Date,
     required: [true, 'Issue date is required'],
@@ -75,7 +81,10 @@ const LoanSchema: Schema<ILoan, ILoanModel> = new Schema({
     validate: {
         validator: function(this: ILoan, value: Date) {
             // Ensure dueDate is not before issueDate
-            return !isAfter(this.issueDate, value);
+            const issueD = this.issueDate instanceof Date ? this.issueDate : parseISO(String(this.issueDate));
+            const dueD = value instanceof Date ? value : parseISO(String(value));
+            if (!isValid(issueD) || !isValid(dueD)) return false; // Fail if dates are invalid
+            return !isAfter(issueD, dueD);
         },
         message: 'Due date cannot be before the issue date.'
     }
@@ -111,14 +120,6 @@ const LoanSchema: Schema<ILoan, ILoanModel> = new Schema({
     type: Schema.Types.ObjectId,
     ref: 'Repayment',
   }],
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now,
-  }
 }, {
   // Enable virtuals to be included in JSON/object output
   toJSON: { virtuals: true },
@@ -138,7 +139,13 @@ LoanSchema.methods.calculateStatus = function(): LoanStatus {
   }
 
   const today = startOfDay(new Date()); // Compare against the start of today
-  let effectiveDueDate = startOfDay(this.dueDate); // Compare against the start of the due date
+  const dueD = this.dueDate instanceof Date ? this.dueDate : parseISO(String(this.dueDate));
+  if(!isValid(dueD)) {
+      console.warn(`Loan ${this._id}: Invalid due date for status calculation.`);
+      return 'pending'; // Default to pending if date is invalid
+  }
+
+  let effectiveDueDate = startOfDay(dueD); // Compare against the start of the due date
 
   // Apply grace days if applicable
   if (this.graceDays > 0) {
@@ -159,15 +166,10 @@ LoanSchema.methods.calculateStatus = function(): LoanStatus {
 LoanSchema.pre<ILoan>('save', function(next) {
   if (this.isNew) {
     this.balance = this.amount; // Initial balance is the full amount
-    this.status = this.calculateStatus(); // Calculate initial status based on potentially future due date
-  } else {
-     // If updating balance or due date, recalculate status
-     if (this.isModified('balance') || this.isModified('dueDate') || this.isModified('graceDays')) {
-       this.status = this.calculateStatus();
-     }
-     // Mongoose timestamps handle updatedAt automatically if enabled in schema options
-     // this.updatedAt = new Date(); // Manual update if timestamps: true is not used
   }
+   // Always recalculate status on save (new or update) to ensure accuracy
+   this.status = this.calculateStatus();
+
   next();
 });
 

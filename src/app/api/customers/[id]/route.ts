@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import connectDB from '@/lib/db';
-import Customer from '@/models/Customer';
+import Customer, { ICustomer } from '@/models/Customer'; // Import ICustomer
 import Loan from '@/models/Loan'; // Needed for delete check
 import { getUserIdFromRequest } from '@/lib/server-utils';
 
@@ -20,9 +20,26 @@ async function ensureDbConnection() {
     }
 }
 
+// Helper to add CORS headers
+function addCorsHeaders(response: NextResponse): NextResponse {
+    response.headers.set('Access-Control-Allow-Origin', '*'); // Adjust for production
+    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    response.headers.set('Access-Control-Allow-Credentials', 'true');
+    return response;
+}
+
+// Handle OPTIONS requests for CORS preflight
+export async function OPTIONS(req: NextRequest) {
+  const response = new NextResponse(null, { status: 204 });
+  return addCorsHeaders(response);
+}
+
+
 // GET a single customer by ID
 export async function GET(req: NextRequest, { params }: Params) {
   let userId;
+  let response: NextResponse;
   try {
     // Authenticate and connect to DB first
     userId = await getUserIdFromRequest(req);
@@ -30,44 +47,48 @@ export async function GET(req: NextRequest, { params }: Params) {
     const { id } = params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-        return NextResponse.json({ message: 'Invalid customer ID format' }, { status: 400 });
+        response = NextResponse.json({ message: 'Invalid customer ID format' }, { status: 400 });
+        return addCorsHeaders(response);
     }
 
     // Fetch customer
-    const customer = await Customer.findById(id);
+    const customer = await Customer.findById(id).lean(); // Use lean for read-only
 
     if (!customer) {
-      return NextResponse.json({ message: 'Customer not found' }, { status: 404 });
+      response = NextResponse.json({ message: 'Customer not found' }, { status: 404 });
+      return addCorsHeaders(response);
     }
 
     // Ensure the customer belongs to the logged-in shopkeeper
     if (customer.shopkeeper.toString() !== userId) {
        console.warn(`Unauthorized attempt: User ${userId} tried to access customer ${id} owned by ${customer.shopkeeper.toString()}`);
-      return NextResponse.json({ message: 'Not authorized to view this customer' }, { status: 403 }); // 403 Forbidden better than 401
+      response = NextResponse.json({ message: 'Not authorized to view this customer' }, { status: 403 }); // 403 Forbidden better than 401
+      return addCorsHeaders(response);
     }
 
-    return NextResponse.json(customer);
+    response = NextResponse.json(customer);
 
   } catch (error: any) {
      console.error(`GET Customer ${params?.id || 'invalid ID'} API error:`, error);
      // Handle specific error types
      if (error.message.startsWith('Not authorized')) {
-         return NextResponse.json({ message: error.message }, { status: 401 });
+         response = NextResponse.json({ message: error.message }, { status: 401 });
+     } else if (error.message.includes('Could not connect to database')) {
+          response = NextResponse.json({ message: error.message }, { status: 503 }); // Service Unavailable
+     } else if (error instanceof mongoose.Error.CastError && error.path === '_id') {
+         response = NextResponse.json({ message: 'Invalid customer ID format' }, { status: 400 });
+     } else {
+        // Generic error
+        response = NextResponse.json({ message: 'Server error fetching customer', error: error.message || 'Unknown error' }, { status: 500 });
      }
-     if (error.message.includes('Could not connect to database')) {
-          return NextResponse.json({ message: error.message }, { status: 503 }); // Service Unavailable
-     }
-     if (error instanceof mongoose.Error.CastError && error.path === '_id') {
-         return NextResponse.json({ message: 'Invalid customer ID format' }, { status: 400 });
-     }
-     // Generic error
-     return NextResponse.json({ message: 'Server error fetching customer', error: error.message || 'Unknown error' }, { status: 500 });
   }
+  return addCorsHeaders(response);
 }
 
 // PUT (update) a customer by ID
 export async function PUT(req: NextRequest, { params }: Params) {
    let userId;
+   let response: NextResponse;
   try {
     // Authenticate and connect to DB
     userId = await getUserIdFromRequest(req);
@@ -75,84 +96,97 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const { id } = params;
 
      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return NextResponse.json({ message: 'Invalid customer ID format' }, { status: 400 });
+        response = NextResponse.json({ message: 'Invalid customer ID format' }, { status: 400 });
+        return addCorsHeaders(response);
     }
 
     const requestBody = await req.json(); // Parse body once
 
     // --- Validation --- (Add more specific validation if needed)
-     const { name, phone, address, trustScore, creditLimit } = requestBody;
-     if (name !== undefined && typeof name !== 'string') return NextResponse.json({ message: 'Invalid name format' }, { status: 400 });
-     if (phone !== undefined && typeof phone !== 'string') return NextResponse.json({ message: 'Invalid phone format' }, { status: 400 });
-     // Add more validation as needed for address, trustScore, creditLimit types/values
+     const { name, phone, address, notes, trustScore, creditLimit } = requestBody; // Added notes
+     const validationErrors: string[] = [];
 
-    // Find existing customer
+     if (name !== undefined && (typeof name !== 'string' || name.trim().length === 0)) validationErrors.push('Name cannot be empty.');
+     if (phone !== undefined) {
+         if (typeof phone !== 'string' || phone.trim().length === 0) {
+             validationErrors.push('Phone cannot be empty.');
+         } else if (!/^[6-9]\d{9}$/.test(phone.replace(/\s+/g, ''))) {
+            validationErrors.push('Invalid 10-digit mobile number format.');
+         }
+     }
+     if (address !== undefined && typeof address !== 'string') validationErrors.push('Invalid address format.');
+     if (notes !== undefined && typeof notes !== 'string') validationErrors.push('Invalid notes format.'); // Added notes validation
+     if (trustScore !== undefined) {
+         const score = Number(trustScore);
+         if (isNaN(score) || score < 0 || score > 10) validationErrors.push('Trust Score must be between 0 and 10.');
+     }
+     if (creditLimit !== undefined) {
+         const limit = Number(creditLimit);
+         if (isNaN(limit) || limit < 0) validationErrors.push('Credit Limit must be non-negative.');
+     }
+
+      if (validationErrors.length > 0) {
+          response = NextResponse.json({ message: validationErrors.join(' ') }, { status: 400 });
+          return addCorsHeaders(response);
+      }
+
+
+    // Find existing customer (do not use lean here, we need to save it)
     let customer = await Customer.findById(id);
 
     if (!customer) {
-      return NextResponse.json({ message: 'Customer not found' }, { status: 404 });
+      response = NextResponse.json({ message: 'Customer not found' }, { status: 404 });
+       return addCorsHeaders(response);
     }
 
     // Check ownership
     if (customer.shopkeeper.toString() !== userId) {
       console.warn(`Unauthorized attempt: User ${userId} tried to update customer ${id} owned by ${customer.shopkeeper.toString()}`);
-      return NextResponse.json({ message: 'Not authorized to update this customer' }, { status: 403 });
+      response = NextResponse.json({ message: 'Not authorized to update this customer' }, { status: 403 });
+       return addCorsHeaders(response);
     }
 
-    // Build update object selectively - only include fields present in the request body
-    const updateFields: Partial<ICustomer> = {}; // Use Partial<ICustomer> for type safety
-    if (name !== undefined) updateFields.name = name;
-    if (phone !== undefined) updateFields.phone = phone;
-    if (address !== undefined) updateFields.address = address;
-    if (trustScore !== undefined) updateFields.trustScore = Number(trustScore); // Ensure conversion
-    if (creditLimit !== undefined) updateFields.creditLimit = Number(creditLimit); // Ensure conversion
+    // Apply updates selectively - only update fields present in the request body
+    if (name !== undefined) customer.name = name.trim();
+    if (phone !== undefined) customer.phone = phone.replace(/\s+/g, ''); // Clean phone number
+    if (address !== undefined) customer.address = address.trim();
+    if (notes !== undefined) customer.notes = notes.trim(); // Added notes update
+    if (trustScore !== undefined) customer.trustScore = Number(trustScore);
+    if (creditLimit !== undefined) customer.creditLimit = Number(creditLimit);
 
-    // Add updatedAt manually if not using timestamps: true
-    // updateFields.updatedAt = new Date();
+    // Mongoose `timestamps: true` handles `updatedAt` automatically on save
+    const updatedCustomer = await customer.save(); // Triggers validation and middleware
 
-    // Perform update
-    const updatedCustomer = await Customer.findByIdAndUpdate(
-      id,
-      { $set: updateFields },
-      { new: true, runValidators: true, context: 'query' } // Return updated doc, run validators
-    );
-
-    // Check if update was successful (findByIdAndUpdate returns null if not found)
-    if (!updatedCustomer) {
-         // This might happen in a race condition if deleted between findById and findByIdAndUpdate
-         console.warn(`Customer ${id} not found during update operation, possibly deleted.`);
-         return NextResponse.json({ message: 'Customer not found during update' }, { status: 404 });
-    }
-
-    return NextResponse.json(updatedCustomer);
+    response = NextResponse.json(updatedCustomer);
 
   } catch (error: any) {
      console.error(`PUT Customer ${params?.id || 'invalid ID'} API error:`, error);
       // Handle specific errors
      if (error.message.startsWith('Not authorized')) {
-         return NextResponse.json({ message: error.message }, { status: 401 });
-     }
-     if (error.message.includes('Could not connect to database')) {
-          return NextResponse.json({ message: error.message }, { status: 503 }); // Service Unavailable
-     }
-      if (error instanceof SyntaxError) { // JSON parsing error
-         return NextResponse.json({ message: 'Invalid request body format.' }, { status: 400 });
-     }
-     if (error instanceof mongoose.Error.ValidationError) { // Mongoose validation error
+         response = NextResponse.json({ message: error.message }, { status: 401 });
+     } else if (error.message.includes('Could not connect to database')) {
+          response = NextResponse.json({ message: error.message }, { status: 503 }); // Service Unavailable
+     } else if (error instanceof SyntaxError) { // JSON parsing error
+         response = NextResponse.json({ message: 'Invalid request body format.' }, { status: 400 });
+     } else if (error instanceof mongoose.Error.ValidationError) { // Mongoose validation error
         const messages = Object.values(error.errors).map((val: any) => val.message);
-        return NextResponse.json({ message: messages.join('. ') }, { status: 400 });
+        response = NextResponse.json({ message: messages.join('. ') }, { status: 400 });
+     } else if (error instanceof mongoose.Error.CastError) { // Invalid data type (e.g., for number fields)
+         response = NextResponse.json({ message: `Invalid data type provided for field ${error.path}. Expected ${error.kind}.` }, { status: 400 });
+     } else if (error.code === 11000) { // Duplicate key error
+         response = NextResponse.json({ message: 'Update failed: Phone number might already be in use by another customer.' }, { status: 409 }); // 409 Conflict
+     } else {
+        // Generic error
+        response = NextResponse.json({ message: 'Server error updating customer', error: error.message || 'Unknown error' }, { status: 500 });
      }
-     if (error instanceof mongoose.Error.CastError) { // Invalid data type (e.g., for number fields)
-         return NextResponse.json({ message: `Invalid data type provided for field ${error.path}. Expected ${error.kind}.` }, { status: 400 });
-     }
-     // Generic error
-     return NextResponse.json({ message: 'Server error updating customer', error: error.message || 'Unknown error' }, { status: 500 });
   }
+   return addCorsHeaders(response);
 }
 
 // DELETE a customer by ID
 export async function DELETE(req: NextRequest, { params }: Params) {
    let userId;
+   let response: NextResponse;
   try {
      // Authenticate and connect to DB
     userId = await getUserIdFromRequest(req);
@@ -160,27 +194,31 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     const { id } = params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-        return NextResponse.json({ message: 'Invalid customer ID format' }, { status: 400 });
+        response = NextResponse.json({ message: 'Invalid customer ID format' }, { status: 400 });
+        return addCorsHeaders(response);
     }
 
     // Find customer to check ownership before deleting
     const customer = await Customer.findById(id);
 
     if (!customer) {
-      return NextResponse.json({ message: 'Customer not found' }, { status: 404 });
+      response = NextResponse.json({ message: 'Customer not found' }, { status: 404 });
+       return addCorsHeaders(response);
     }
 
     // Check ownership
     if (customer.shopkeeper.toString() !== userId) {
       console.warn(`Unauthorized attempt: User ${userId} tried to delete customer ${id} owned by ${customer.shopkeeper.toString()}`);
-      return NextResponse.json({ message: 'Not authorized to delete this customer' }, { status: 403 });
+      response = NextResponse.json({ message: 'Not authorized to delete this customer' }, { status: 403 });
+       return addCorsHeaders(response);
     }
 
     // Check for associated loans before deleting
     const loanCount = await Loan.countDocuments({ customer: id, shopkeeper: userId });
     if (loanCount > 0) {
        console.log(`Deletion prevented: Customer ${id} has ${loanCount} associated loans.`);
-      return NextResponse.json({ message: `Cannot delete customer with ${loanCount} associated loan(s). Consider archiving or resolving loans first.` }, { status: 400 }); // 400 Bad Request as it's a business rule violation
+      response = NextResponse.json({ message: `Cannot delete customer with ${loanCount} associated loan(s). Consider archiving or resolving loans first.` }, { status: 400 }); // 400 Bad Request as it's a business rule violation
+       return addCorsHeaders(response);
     }
 
     // Perform delete
@@ -189,31 +227,29 @@ export async function DELETE(req: NextRequest, { params }: Params) {
      if (!deleteResult) {
          // Should ideally not happen if the initial findById succeeded, but handle race conditions
          console.warn(`Customer ${id} not found during delete operation, possibly deleted already.`);
-         return NextResponse.json({ message: 'Customer not found during delete operation' }, { status: 404 });
+         response = NextResponse.json({ message: 'Customer not found during delete operation' }, { status: 404 });
+         return addCorsHeaders(response);
      }
 
      console.log(`Customer ${id} deleted successfully by user ${userId}.`);
-    return NextResponse.json({ message: 'Customer removed successfully' });
+    response = NextResponse.json({ message: 'Customer removed successfully' });
 
   } catch (error: any) {
       console.error(`DELETE Customer ${params?.id || 'invalid ID'} API error:`, error);
        // Handle specific errors
       if (error.message.startsWith('Not authorized')) {
-          return NextResponse.json({ message: error.message }, { status: 401 });
-      }
-       if (error.message.includes('Could not connect to database')) {
-           return NextResponse.json({ message: error.message }, { status: 503 }); // Service Unavailable
-       }
-      if (error instanceof mongoose.Error.CastError && error.path === '_id') {
-         return NextResponse.json({ message: 'Invalid customer ID format' }, { status: 400 });
-     }
-       if (error instanceof mongoose.Error) { // Catch other potential Mongoose errors during count/delete
+          response = NextResponse.json({ message: error.message }, { status: 401 });
+      } else if (error.message.includes('Could not connect to database')) {
+           response = NextResponse.json({ message: error.message }, { status: 503 }); // Service Unavailable
+       } else if (error instanceof mongoose.Error.CastError && error.path === '_id') {
+         response = NextResponse.json({ message: 'Invalid customer ID format' }, { status: 400 });
+     } else if (error instanceof mongoose.Error) { // Catch other potential Mongoose errors during count/delete
             console.error('Mongoose error during customer delete operation:', error);
-            return NextResponse.json({ message: 'Database error during delete operation.' }, { status: 500 });
-       }
-      // Generic error
-      return NextResponse.json({ message: 'Server error deleting customer', error: error.message || 'Unknown error' }, { status: 500 });
+            response = NextResponse.json({ message: 'Database error during delete operation.' }, { status: 500 });
+       } else {
+          // Generic error
+          response = NextResponse.json({ message: 'Server error deleting customer', error: error.message || 'Unknown error' }, { status: 500 });
+      }
   }
+   return addCorsHeaders(response);
 }
-
-    
